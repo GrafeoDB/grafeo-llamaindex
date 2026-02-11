@@ -72,7 +72,7 @@ class TestGrafeoPGRetriever:
             include_text=False,
         )
         results = retriever.retrieve("people query")
-        scores = [r.score for r in results]
+        scores = [r.score for r in results if r.score is not None]
         assert scores == sorted(scores, reverse=True)
 
     def test_pagerank_disabled(self, retriever_store: GrafeoPropertyGraphStore) -> None:

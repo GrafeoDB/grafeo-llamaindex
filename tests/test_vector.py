@@ -31,7 +31,7 @@ class TestVectorQuery:
         assert len(nodes) == 2
         assert len(scores) == 2
         # graph-db and vector-search should be closest to the query
-        names = {n.name for n in nodes}
+        names = {n.id for n in nodes}
         assert "graph-db" in names or "vector-search" in names
 
     def test_no_embedding(self, vector_store: GrafeoPropertyGraphStore) -> None:
@@ -64,7 +64,7 @@ class TestCustomLabelVector:
         query = VectorStoreQuery(query_embedding=[0.15, 0.85, 0.25, 0.75], similarity_top_k=2)
         nodes, _scores = s.vector_query(query)
         assert len(nodes) == 2
-        names = {n.name for n in nodes}
+        names = {n.id for n in nodes}
         assert "gravity" in names
         assert "entropy" in names
 

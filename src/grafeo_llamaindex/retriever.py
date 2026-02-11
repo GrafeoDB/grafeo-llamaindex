@@ -54,7 +54,7 @@ class GrafeoPGRetriever(BasePGRetriever):
 
     def _compute_pagerank_scores(self) -> dict[str, float]:
         """Run PageRank on the underlying Grafeo DB and map node IDs to normalised scores."""
-        db = self._graph_store.client  # type: ignore[union-attr]
+        db = self._graph_store.client
         raw = db.algorithms.pagerank()
         if not raw:
             return {}
