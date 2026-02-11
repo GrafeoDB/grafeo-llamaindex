@@ -72,7 +72,7 @@ for row in results:
 print("\n=== Triplets for Grafeo ===")
 triplets = graph_store.get_triplets(entity_names=["Grafeo"])
 for src, rel, tgt in triplets:
-    print(f"  {src.name} --[{rel.label}]--> {tgt.name}")
+    print(f"  {src.id} --[{rel.label}]--> {tgt.id}")
 
 # ── 3. Multi-hop relationship map ───────────────────────────────────────
 
@@ -80,7 +80,7 @@ print("\n=== 2-hop Relationship Map from LlamaIndex ===")
 seeds = graph_store.get(ids=["LlamaIndex"])
 rel_map = graph_store.get_rel_map(seeds, depth=2)
 for src, rel, tgt in rel_map:
-    print(f"  {src.name} --[{rel.label}]--> {tgt.name}")
+    print(f"  {src.id} --[{rel.label}]--> {tgt.id}")
 
 # ── 4. Vector similarity search ─────────────────────────────────────────
 
@@ -88,7 +88,7 @@ print("\n=== Vector Search (closest to AI/framework space) ===")
 query = VectorStoreQuery(query_embedding=[0.25, 0.85, 0.15, 0.75], similarity_top_k=2)
 nodes, scores = graph_store.vector_query(query)
 for node, score in zip(nodes, scores, strict=True):
-    print(f"  {node.name}: similarity={score:.3f}")
+    print(f"  {node.id}: similarity={score:.3f}")
 
 # ── 5. Direct access to Grafeo's graph algorithms ───────────────────────
 

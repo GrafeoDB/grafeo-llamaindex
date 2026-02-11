@@ -12,7 +12,7 @@ class TestGet:
         alice = populated_store.get(ids=["Alice"])
         assert len(alice) == 1
         assert isinstance(alice[0], EntityNode)
-        assert alice[0].name == "Alice"
+        assert alice[0].id == "Alice"
 
     def test_by_ids_missing(self, populated_store: GrafeoPropertyGraphStore) -> None:
         results = populated_store.get(ids=["NonExistent"])
@@ -21,7 +21,7 @@ class TestGet:
     def test_by_properties(self, populated_store: GrafeoPropertyGraphStore) -> None:
         results = populated_store.get(properties={"age": 25})
         assert len(results) == 1
-        assert results[0].name == "Bob"
+        assert results[0].id == "Bob"
 
     def test_all(self, populated_store: GrafeoPropertyGraphStore) -> None:
         results = populated_store.get()
@@ -40,7 +40,7 @@ class TestGetTriplets:
         triplets = populated_store.get_triplets(entity_names=["Alice"])
         assert len(triplets) >= 1
         # Alice is involved in the KNOWS relation
-        names = {t[0].name for t in triplets} | {t[2].name for t in triplets}
+        names = {t[0].id for t in triplets} | {t[2].id for t in triplets}
         assert "Alice" in names
 
     def test_by_relation_names(self, populated_store: GrafeoPropertyGraphStore) -> None:
@@ -142,4 +142,4 @@ class TestSanitization:
         store.upsert_nodes([node])
         results = store.get(properties={"name": "O'Brien"})
         assert len(results) == 1
-        assert results[0].name == "O'Brien"
+        assert results[0].id == "O'Brien"
