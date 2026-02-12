@@ -42,7 +42,7 @@ nodes = retriever.retrieve("What are the key relationships?")
 - **Embedded database** — no Docker, no cloud, no external services. Just `pip install grafeo`
 - **Single-file persistence** — your entire knowledge graph lives in one `.db` file
 - **Native HNSW vector search** — embeddings stored alongside graph nodes, no separate vector DB needed
-- **Multi-language queries** — GQL, Cypher, Gremlin, GraphQL, and SPARQL all supported
+- **Multi-language queries** — GQL, Cypher, Gremlin, GraphQL, SPARQL, and SQL/PGQ all supported
 - **Built-in graph algorithms** — PageRank, Louvain, shortest paths, centrality, and 30+ more via `graph_store.client.algorithms`
 
 ## API Reference
@@ -88,7 +88,7 @@ store = GrafeoPropertyGraphStore(
 | Requires server | Yes | Yes | **No** (embedded) |
 | Vector search | Plugin (5.x+) | Limited | **Native HNSW** |
 | Graph algorithms | GDS plugin ($) | Built-in | **Built-in (30+)** |
-| Query languages | Cypher | Cypher | **GQL, Cypher, Gremlin, GraphQL, SPARQL** |
+| Query languages | Cypher | Cypher | **GQL, Cypher, Gremlin, GraphQL, SPARQL, SQL/PGQ** |
 | Deployment | Docker/Cloud | Docker/Cloud | **`pip install grafeo`** |
 | Persistence | Server-managed | Server-managed | **Single `.db` file** |
 
