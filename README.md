@@ -5,14 +5,14 @@
 
 # grafeo-llamaindex
 
-LlamaIndex `PropertyGraphStore` backed by [GrafeoDB](https://github.com/GrafeoDB/grafeo) — an embedded graph database with native vector search.
+LlamaIndex `PropertyGraphStore` backed by [GrafeoDB](https://github.com/GrafeoDB/grafeo), an embedded graph database with native vector search.
 
-Build knowledge graphs from documents, query them with GQL, and run vector similarity search — all in a single `.db` file. No servers, no infrastructure.
+Build knowledge graphs from documents, query them with GQL, and run vector similarity search, all in a single `.db` file. No servers, no infrastructure.
 
 ## Install
 
 ```bash
-pip install grafeo-llamaindex
+uv add grafeo-llamaindex
 ```
 
 ## Quickstart
@@ -37,13 +37,13 @@ nodes = retriever.retrieve("What are the key relationships?")
 
 ## Features
 
-- **Full PropertyGraphStore** — all 8 abstract methods implemented (`get`, `get_triplets`, `get_rel_map`, `upsert_nodes`, `upsert_relations`, `delete`, `structured_query`, `vector_query`)
-- **Structured + vector queries** — `supports_structured_queries = True` and `supports_vector_queries = True` in a single store
-- **Embedded database** — no Docker, no cloud, no external services. Just `pip install grafeo`
-- **Single-file persistence** — your entire knowledge graph lives in one `.db` file
-- **Native HNSW vector search** — embeddings stored alongside graph nodes, no separate vector DB needed
-- **Multi-language queries** — GQL, Cypher, Gremlin, GraphQL, SPARQL, and SQL/PGQ all supported
-- **Built-in graph algorithms** — PageRank, Louvain, shortest paths, centrality, and 30+ more via `graph_store.client.algorithms`
+- **Full PropertyGraphStore**: all 8 abstract methods implemented (`get`, `get_triplets`, `get_rel_map`, `upsert_nodes`, `upsert_relations`, `delete`, `structured_query`, `vector_query`)
+- **Structured + vector queries**: `supports_structured_queries = True` and `supports_vector_queries = True` in a single store
+- **Embedded database**: no Docker, no cloud, no external services. Just `uv add grafeo`
+- **Single-file persistence**: the entire knowledge graph lives in one `.db` file
+- **Native HNSW vector search**: embeddings stored alongside graph nodes, no separate vector DB needed
+- **Multi-language queries**: GQL, Cypher, Gremlin, GraphQL, SPARQL and SQL/PGQ all supported
+- **Built-in graph algorithms**: PageRank, Louvain, shortest paths, centrality and 30+ more via `graph_store.client.algorithms`
 
 ## API Reference
 
@@ -53,17 +53,17 @@ nodes = retriever.retrieve("What are the key relationships?")
 from grafeo_llamaindex import GrafeoPropertyGraphStore
 
 store = GrafeoPropertyGraphStore(
-    db_path=None,                # str | None — path for persistent storage, None for in-memory
-    embedding_dimensions=1536,   # int — vector dimensions for HNSW index
-    embedding_metric="cosine",   # str — "cosine", "euclidean", "dot_product", or "manhattan"
+    db_path=None,                # str | None - path for persistent storage, None for in-memory
+    embedding_dimensions=1536,   # int - vector dimensions for HNSW index
+    embedding_metric="cosine",   # str - "cosine", "euclidean", "dot_product", or "manhattan"
 )
 ```
 
 **Properties:**
 
-- `store.client` — access the underlying `grafeo.GrafeoDB` instance for direct queries and algorithms
-- `store.supports_structured_queries` — `True`
-- `store.supports_vector_queries` — `True`
+- `store.client`: access the underlying `grafeo.GrafeoDB` instance for direct queries and algorithms
+- `store.supports_structured_queries`: `True`
+- `store.supports_vector_queries`: `True`
 
 **Methods (PropertyGraphStore interface):**
 
@@ -89,15 +89,15 @@ store = GrafeoPropertyGraphStore(
 | Vector search | Plugin (5.x+) | Limited | **Native HNSW** |
 | Graph algorithms | GDS plugin ($) | Built-in | **Built-in (30+)** |
 | Query languages | Cypher | Cypher | **GQL, Cypher, Gremlin, GraphQL, SPARQL, SQL/PGQ** |
-| Deployment | Docker/Cloud | Docker/Cloud | **`pip install grafeo`** |
+| Deployment | Docker/Cloud | Docker/Cloud | **`uv add grafeo`** |
 | Persistence | Server-managed | Server-managed | **Single `.db` file** |
 
 ## Examples
 
 See the [`examples/`](examples/) directory:
 
-- **[`basic_graph_rag.py`](examples/basic_graph_rag.py)** — build a Property Graph Index from documents and query it
-- **[`hybrid_retrieval.py`](examples/hybrid_retrieval.py)** — structured queries + vector search + PageRank, all in one script
+- **[`basic_graph_rag.py`](examples/basic_graph_rag.py)**: build a Property Graph Index from documents and query it
+- **[`hybrid_retrieval.py`](examples/hybrid_retrieval.py)**: structured queries + vector search + PageRank, all in one script
 
 ## Development
 
