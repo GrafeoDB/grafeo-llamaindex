@@ -28,6 +28,11 @@ _CREATED_AT_KEY = "created_at"
 _UPDATED_AT_KEY = "updated_at"
 
 
+def _row_id(value: int | dict) -> int:
+    """Extract a Grafeo ID from a query row value (int in older versions, dict in 0.5.37+)."""
+    return value["_id"] if isinstance(value, dict) else value
+
+
 def _escape(value: str) -> str:
     """Escape single quotes and backslashes for safe GQL string interpolation."""
     return value.replace("\\", "\\\\").replace("'", "\\'")
@@ -195,7 +200,7 @@ class GrafeoPropertyGraphStore(PropertyGraphStore):
             f"RETURN r LIMIT 1"
         )
         for row in self._db.execute(query):
-            return row["r"]
+            return _row_id(row["r"])
         return None
 
     def _grafeo_node_to_labelled(self, node_id: int) -> LabelledNode | None:
@@ -304,9 +309,9 @@ class GrafeoPropertyGraphStore(PropertyGraphStore):
             rel_pattern = f":{edge_type}" if edge_type else ""
             query = f"MATCH (src)-[rel{rel_pattern}]->(tgt){where_clause} RETURN src, rel, tgt LIMIT {limit}"
             for row in self._db.execute(query):
-                edge = self._db.get_edge(row["rel"])
-                src_node = self._grafeo_node_to_labelled(row["src"])
-                tgt_node = self._grafeo_node_to_labelled(row["tgt"])
+                edge = self._db.get_edge(_row_id(row["rel"]))
+                src_node = self._grafeo_node_to_labelled(_row_id(row["src"]))
+                tgt_node = self._grafeo_node_to_labelled(_row_id(row["tgt"]))
                 if src_node and tgt_node:
                     edge_props = {k: v for k, v in edge.properties().items() if k not in _INTERNAL_EDGE_KEYS}
                     triplets.append(
@@ -362,11 +367,11 @@ class GrafeoPropertyGraphStore(PropertyGraphStore):
 
             next_frontier: dict[int, str] = {}
             for row in self._db.execute(query):
-                edge = self._db.get_edge(row["rel"])
+                edge = self._db.get_edge(_row_id(row["rel"]))
                 if ignore_rels and edge.edge_type in ignore_rels:
                     continue
 
-                src_id, tgt_id = row["src"], row["tgt"]
+                src_id, tgt_id = _row_id(row["src"]), _row_id(row["tgt"])
                 edge_key = f"{src_id}-{edge.edge_type}-{tgt_id}"
                 if edge_key in seen_edges:
                     continue

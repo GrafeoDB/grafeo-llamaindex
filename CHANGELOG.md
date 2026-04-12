@@ -1,11 +1,17 @@
 # Changelog
 
-## 0.2.1
+## 0.2.0 - 2026-04-12
 
-Test coverage, validation and documentation improvements.
+Aligned with grafeo 0.5.37. New features, test coverage and documentation improvements.
 
 ### Added
 
+- Auto-detect embedding dimensions from model probe at init
+- Entity deduplication: configurable cosine similarity threshold merges near-duplicate entities
+- Timestamps: `created_at` and `updated_at` on all nodes, UTC ISO 8601
+- Convenience API: `node_count`, `edge_count`, `summary()`, `neighbors()`, `persist()`, `close()`
+- `GrafeoPGRetriever`: custom retriever with PageRank reranking and multi-hop expansion
+- Context manager support for automatic cleanup
 - Persistence round-trip tests: nodes, edges and vector search survive close/reopen
 - Async retrieve tests: `aretrieve_from_graph()` verified to match sync results and scores
 - Performance tests: 1000 nodes + 2000 relations vector query under 2s, concurrent upsert with 2 threads
@@ -24,23 +30,11 @@ Test coverage, validation and documentation improvements.
 
 ### Changed
 
-- README: added Persistence section with `db_path` and `persist()` examples
-- README: added Deduplication section documenting threshold semantics and ChunkNode exclusion
-- README: added Relation Upsert Behavior section documenting the `UserWarning`
+- Requires grafeo >=0.5 (tested against 0.5.37)
+- README: added Persistence, Deduplication, and Relation Upsert Behavior sections
 - README: added `dedup_threshold` to constructor signature in API Reference
 - README: mock embedding demo listed first in examples
 - 124 tests passing, 96% coverage
-
-## 0.2.0
-
-### Added
-
-- Auto-detect embedding dimensions from model probe at init
-- Entity deduplication: configurable cosine similarity threshold merges near-duplicate entities
-- Timestamps: `created_at` and `updated_at` on all nodes, UTC ISO 8601
-- Convenience API: `node_count`, `edge_count`, `summary()`, `neighbors()`, `persist()`, `close()`
-- `GrafeoPGRetriever`: custom retriever with PageRank reranking and multi-hop expansion
-- Context manager support for automatic cleanup
 
 ## 0.1.0
 
