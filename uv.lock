@@ -510,40 +510,26 @@ wheels = [
 
 [[package]]
 name = "grafeo"
-version = "0.5.0"
+version = "0.5.37"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "solvor" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/64/c9/bc28feb026690675f9d8908bedc4c2ef4ef1bd18b6b82f74f0eab5f4681f/grafeo-0.5.0.tar.gz", hash = "sha256:eb4935e7c0b2051680b136f4b7a326d92ad991cfa6697655374b9a2f12b71d4f", size = 887704 }
+sdist = { url = "https://files.pythonhosted.org/packages/af/82/6f9111454a493f673af10cb21f3b3cf8406b35620349ca5ad24dbe81f206/grafeo-0.5.37.tar.gz", hash = "sha256:563c57b0d902cf7629e378fb3448873c88aa4d4a341c74fa7122a8df4ffbd9a3", size = 2061143 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/06/75/26ef7dee52b8a549abd62f925a8857c09c49dc1509e30d20590cf9e365e6/grafeo-0.5.0-cp312-cp312-macosx_10_12_x86_64.whl", hash = "sha256:e70c31042e47a0193343d97c2a926dd1d7e503a854492bd4e5a1916d6207a737", size = 2578750 },
-    { url = "https://files.pythonhosted.org/packages/72/9b/fe5e661b808f68e451112786ea1070d76ce1fd477554120af6abcb73213f/grafeo-0.5.0-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:59c50b606b43ea6689477e6194357b2c4be43b2c7e1bfdc98443244e98577833", size = 2405157 },
-    { url = "https://files.pythonhosted.org/packages/07/48/97dd792b042ee96f3665e98ea0c39d350d4a3c3a51b628b67d0362760f3b/grafeo-0.5.0-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:095e0f1f47ec20d2299dcd43d4e6c4a5ec6a209a6a03a1404007e1130d73729c", size = 2553398 },
-    { url = "https://files.pythonhosted.org/packages/a3/0f/c56a06b3970ce232fcb8c191916b0a718897af83c72fe7598bb69808235c/grafeo-0.5.0-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:3c571ef3a74d299886cbd6bac66fb5202c52a0816d2667bb25d2ee33440bc711", size = 2676873 },
-    { url = "https://files.pythonhosted.org/packages/16/09/90374349f64db4d928ca17cf1564c1855debdea659392f27e4861ebd83c3/grafeo-0.5.0-cp312-cp312-musllinux_1_2_aarch64.whl", hash = "sha256:2d61602aecdb5a59836d2a8e0ccd77f28cb1f36756bcfa867110d6fab6786d14", size = 2731383 },
-    { url = "https://files.pythonhosted.org/packages/67/74/2f6808ee402f619eef6539fcd7ef3f3fc30b4cc0f5fe8ae2a9dd39bbe673/grafeo-0.5.0-cp312-cp312-musllinux_1_2_x86_64.whl", hash = "sha256:61d17806b171a2570069e9ff669761cdbc33c9ea157bd8268540696f776b58e1", size = 2907472 },
-    { url = "https://files.pythonhosted.org/packages/bd/9c/16e1467ff7ab1dd449a39e71e3eaa5b8d03cd59e5fda85450b394c08085c/grafeo-0.5.0-cp312-cp312-win32.whl", hash = "sha256:2c49c61239c31eb190c9bae7f37e8b75b4eca5ea69f6b78c7e1659c048a69f35", size = 2298255 },
-    { url = "https://files.pythonhosted.org/packages/bb/f7/e652ac84f23323745881226e4d3072bc7d0ed88f6e29449a272a363452de/grafeo-0.5.0-cp312-cp312-win_amd64.whl", hash = "sha256:52d6ad05ba814cef3fa3b48e5def5bb10ac76407fda1dbc7854ccecadaf360c9", size = 2512813 },
-    { url = "https://files.pythonhosted.org/packages/fe/c9/fa366e66a0f4816f75357710fdd667fda1c2279ec2489ad7b769e2e381e0/grafeo-0.5.0-cp313-cp313-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:53e00a55881d6ab92e3a4b35d3c309a0ba8bf7b707a234ac823a8e7c53c1e3dc", size = 2552538 },
-    { url = "https://files.pythonhosted.org/packages/c2/77/2d430d2624ec70be883933c4e5a8755cccc26c096198d6bdaae245ffd222/grafeo-0.5.0-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:50c983b644d2b780b91af6e673a7bae61440178b2cd4af23cea82ff6b0ae8113", size = 2676088 },
-    { url = "https://files.pythonhosted.org/packages/9b/2f/f06026f5c8d038a785466ed6a3614de62e5dc04e231e101483cf02d4f35c/grafeo-0.5.0-cp313-cp313-musllinux_1_2_aarch64.whl", hash = "sha256:8ab22a133451792fd0122d546607284c7e78d50597bef5cf24157eee4aed743a", size = 2730419 },
-    { url = "https://files.pythonhosted.org/packages/d0/2a/09a7b61b788379366f321270c69cbdd30dd1f8d94d8ea43e161a80f5ade2/grafeo-0.5.0-cp313-cp313-musllinux_1_2_x86_64.whl", hash = "sha256:cb6a831bdada1c350941d0379f2e028c582a4f517aa322a8593b5cae460e49db", size = 2907025 },
-    { url = "https://files.pythonhosted.org/packages/3d/5e/ccf06b33148ef84c7e7eb63d752635d0fff1a6da3e123f98fb43dbd2417c/grafeo-0.5.0-cp313-cp313t-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:70d6eb3fdc99debf12492c10029b660fdb4a6adb545c21de8dbc042eca820e49", size = 2551605 },
-    { url = "https://files.pythonhosted.org/packages/83/00/ca208eaff6dddd5f516b40f9bce03aba7f78ecf369cb44dc3424419fea32/grafeo-0.5.0-cp313-cp313t-musllinux_1_2_aarch64.whl", hash = "sha256:38f9e0434fbb407651ea416950e628fd2f191e58b3ad8c2368f50df5b8ffe9a3", size = 2729210 },
-    { url = "https://files.pythonhosted.org/packages/e6/76/737932c90fc401f2bd3ff7de6ccda0b46962d59d6744a22fdb4e504872f4/grafeo-0.5.0-cp313-cp313t-musllinux_1_2_x86_64.whl", hash = "sha256:eb7ea28b410fecb41d7b1fc23e01da306fa4f592b9b3bc9e7477056e987f7260", size = 2909284 },
-    { url = "https://files.pythonhosted.org/packages/1a/9a/43df75ec5db22db39017b04737184bb41fc245ec395f219564834f8172b4/grafeo-0.5.0-cp314-cp314-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:a90a3821a57716369e8b3b1d92d31de00fb9f44a59bdf07bc8fe33ab1922ca39", size = 2559129 },
-    { url = "https://files.pythonhosted.org/packages/56/eb/6570fb7f04befd3ef21c459fd2431b29b2e3e2304e67dfdaf669275804e8/grafeo-0.5.0-cp314-cp314-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:8af36b9bbe3b9de9e00e05ca1ec22fd4d439dd5552a56bd5abe43b34225a60e7", size = 2679865 },
-    { url = "https://files.pythonhosted.org/packages/bb/67/c4a690f6c098d7bd7deca9a38574445d06c477bdf490e99d1ce3e8a8ff87/grafeo-0.5.0-cp314-cp314-musllinux_1_2_aarch64.whl", hash = "sha256:2015e165d010fcc3b0c574090e8df9bb1bbad59d62d1760a4a6a1c04083683ee", size = 2736208 },
-    { url = "https://files.pythonhosted.org/packages/6d/bd/81eff47e053b6098d313835a296a3de97182ce6de000fd603c597814693f/grafeo-0.5.0-cp314-cp314-musllinux_1_2_x86_64.whl", hash = "sha256:fa5a25ea301752ae66971c6da33505f6b63b9c658643871294f08cf4cc171652", size = 2910636 },
-    { url = "https://files.pythonhosted.org/packages/79/b6/3e0cc7d5076ea93a41aba0617cf2a69cdbea11ff2ca7537d0d60e7bb8847/grafeo-0.5.0-cp314-cp314t-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:1bbe43378ff8c30a544c345b4f74e263f75764f2083c8e28e623d9a5257aadd7", size = 2557654 },
-    { url = "https://files.pythonhosted.org/packages/99/0e/8ae779b18bbbe8a4ffd3351c46533baadb4b2054282cee146fd3baf4b77e/grafeo-0.5.0-cp314-cp314t-musllinux_1_2_aarch64.whl", hash = "sha256:63bee804894f91812aa5532a3b8f4fd6182fc7af35459e79f93f58b3d5bcfc3c", size = 2735016 },
-    { url = "https://files.pythonhosted.org/packages/44/4c/39a7299b43e1339a6aec3ed6d675bde9d03ec0ac70d1ae54b7a508af910e/grafeo-0.5.0-cp314-cp314t-musllinux_1_2_x86_64.whl", hash = "sha256:190e79acfaf5f759411dec49f0a56fa7d71494c2ce0f0d6dbca676d00736c968", size = 2911947 },
+    { url = "https://files.pythonhosted.org/packages/3d/4c/442d0ce78b6e95076e0ff946dadd2c5fbc2d2295f62919ea7bafa9267a43/grafeo-0.5.37-cp312-abi3-macosx_10_12_x86_64.whl", hash = "sha256:d4c23da954068e9e3b099af9dbd1bcd5e07cb7b2285c026acd710b7c0f03bbc2", size = 4663848 },
+    { url = "https://files.pythonhosted.org/packages/d5/cb/95add20121db57085a22f61b2594c513f0ee0fe62272611697dec958720f/grafeo-0.5.37-cp312-abi3-macosx_11_0_arm64.whl", hash = "sha256:3f7a659e5f242f11d3c1f921b8f82c1e2ef210916ba2af8027d494c133b2cb4a", size = 4365377 },
+    { url = "https://files.pythonhosted.org/packages/e5/8a/584a12d5158cf88c989137d5d15f6663b2d2602a55abc700f9b0f91e80c7/grafeo-0.5.37-cp312-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:4a7603d4dcc3412e4ea78341fdbdc57515faf10b7357f8f65dbd7388982e89d7", size = 4598322 },
+    { url = "https://files.pythonhosted.org/packages/8c/fb/b2503f5f96a322c819f5500531628011ba98bea5cc3fa7a07ab49054220e/grafeo-0.5.37-cp312-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:2c2cda8f0a72c3e8bf232669a0270cf6c9e890f06366e7706f1a0291aa87d585", size = 4826346 },
+    { url = "https://files.pythonhosted.org/packages/18/a4/bb0121ac474e2dd3ef81631627b95883df587df889f9a34e46c2f26585e1/grafeo-0.5.37-cp312-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:2d467c802ef409bcb74e41b7f4617bfb64e005af1d211b961bbee554cee71385", size = 4780753 },
+    { url = "https://files.pythonhosted.org/packages/d6/d3/55c3ef3c0df8eca1f3fb32a37006205a0942bcc42a11e1926c4aa4c77e13/grafeo-0.5.37-cp312-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:91f3ebd5c4be39cdb495ce81ef35dbed93e05851d61360d07d1882af68d5dbed", size = 5066563 },
+    { url = "https://files.pythonhosted.org/packages/8c/da/e0f3778920f66130884f70b007cd7a87297cb24c178b5df5c6f5e9c3e37f/grafeo-0.5.37-cp312-abi3-win32.whl", hash = "sha256:5ab4b8220d805da9233e66c4e60f7964f821622b204fc76c2d76b518b7e6d0d3", size = 4238230 },
+    { url = "https://files.pythonhosted.org/packages/8f/b4/274fe9cfebd6220e47fdc10ee5acd65e2bf9de8d0141b3b76d3f4f49d78e/grafeo-0.5.37-cp312-abi3-win_amd64.whl", hash = "sha256:c66a71dc75878f56971158b6b9ee52b15b6388c2724b76da4ea94430fcf2ffd5", size = 4621380 },
 ]
 
 [[package]]
 name = "grafeo-llamaindex"
-version = "0.1.1"
+version = "0.2.0"
 source = { editable = "." }
 dependencies = [
     { name = "grafeo" },
@@ -554,7 +540,9 @@ dependencies = [
 dev = [
     { name = "llama-index" },
     { name = "pytest" },
+    { name = "pytest-asyncio" },
     { name = "pytest-cov" },
+    { name = "pytest-timeout" },
     { name = "ruff" },
     { name = "ty" },
 ]
@@ -569,7 +557,9 @@ requires-dist = [
 dev = [
     { name = "llama-index", specifier = ">=0.14" },
     { name = "pytest", specifier = ">=9" },
+    { name = "pytest-asyncio", specifier = ">=0.25" },
     { name = "pytest-cov", specifier = ">=7" },
+    { name = "pytest-timeout", specifier = ">=2" },
     { name = "ruff", specifier = ">=0.15" },
     { name = "ty", specifier = ">=0.0.16" },
 ]
@@ -625,6 +615,7 @@ dependencies = [
     { name = "griffecli" },
     { name = "griffelib" },
 ]
+sdist = { url = "https://files.pythonhosted.org/packages/04/56/28a0accac339c164b52a92c6cfc45a903acc0c174caa5c1713803467b533/griffe-2.0.0.tar.gz", hash = "sha256:c68979cd8395422083a51ea7cf02f9c119d889646d99b7b656ee43725de1b80f", size = 293906 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/8b/94/ee21d41e7eb4f823b94603b9d40f86d3c7fde80eacc2c3c71845476dddaa/griffe-2.0.0-py3-none-any.whl", hash = "sha256:5418081135a391c3e6e757a7f3f156f1a1a746cc7b4023868ff7d5e2f9a980aa", size = 5214 },
 ]
@@ -637,6 +628,7 @@ dependencies = [
     { name = "colorama" },
     { name = "griffelib" },
 ]
+sdist = { url = "https://files.pythonhosted.org/packages/a4/f8/2e129fd4a86e52e58eefe664de05e7d502decf766e7316cc9e70fdec3e18/griffecli-2.0.0.tar.gz", hash = "sha256:312fa5ebb4ce6afc786356e2d0ce85b06c1c20d45abc42d74f0cda65e159f6ef", size = 56213 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/e6/ed/d93f7a447bbf7a935d8868e9617cbe1cadf9ee9ee6bd275d3040fbf93d60/griffecli-2.0.0-py3-none-any.whl", hash = "sha256:9f7cd9ee9b21d55e91689358978d2385ae65c22f307a63fb3269acf3f21e643d", size = 9345 },
 ]
@@ -645,6 +637,7 @@ wheels = [
 name = "griffelib"
 version = "2.0.0"
 source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/ad/06/eccbd311c9e2b3ca45dbc063b93134c57a1ccc7607c5e545264ad092c4a9/griffelib-2.0.0.tar.gz", hash = "sha256:e504d637a089f5cab9b5daf18f7645970509bf4f53eda8d79ed71cce8bd97934", size = 166312 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/4d/51/c936033e16d12b627ea334aaaaf42229c37620d0f15593456ab69ab48161/griffelib-2.0.0-py3-none-any.whl", hash = "sha256:01284878c966508b6d6f1dbff9b6fa607bc062d8261c5c7253cb285b06422a7f", size = 142004 },
 ]
@@ -1657,6 +1650,19 @@ wheels = [
 ]
 
 [[package]]
+name = "pytest-asyncio"
+version = "1.3.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pytest" },
+    { name = "typing-extensions", marker = "python_full_version < '3.13'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/90/2c/8af215c0f776415f3590cac4f9086ccefd6fd463befeae41cd4d3f193e5a/pytest_asyncio-1.3.0.tar.gz", hash = "sha256:d7f52f36d231b80ee124cd216ffb19369aa168fc10095013c6b014a34d3ee9e5", size = 50087 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e5/35/f8b19922b6a25bc0880171a2f1a003eaeb93657475193ab516fd87cac9da/pytest_asyncio-1.3.0-py3-none-any.whl", hash = "sha256:611e26147c7f77640e6d0a92a38ed17c3e9848063698d5c93d5aa7aa11cebff5", size = 15075 },
+]
+
+[[package]]
 name = "pytest-cov"
 version = "7.0.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1668,6 +1674,18 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/5e/f7/c933acc76f5208b3b00089573cf6a2bc26dc80a8aece8f52bb7d6b1855ca/pytest_cov-7.0.0.tar.gz", hash = "sha256:33c97eda2e049a0c5298e91f519302a1334c26ac65c1a483d6206fd458361af1", size = 54328 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/ee/49/1377b49de7d0c1ce41292161ea0f721913fa8722c19fb9c1e3aa0367eecb/pytest_cov-7.0.0-py3-none-any.whl", hash = "sha256:3b8e9558b16cc1479da72058bdecf8073661c7f57f7d3c5f22a1c23507f2d861", size = 22424 },
+]
+
+[[package]]
+name = "pytest-timeout"
+version = "2.4.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pytest" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/ac/82/4c9ecabab13363e72d880f2fb504c5f750433b2b6f16e99f4ec21ada284c/pytest_timeout-2.4.0.tar.gz", hash = "sha256:7e68e90b01f9eff71332b25001f85c75495fc4e3a836701876183c4bcfd0540a", size = 17973 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/fa/b6/3127540ecdf1464a00e5a01ee60a1b09175f6913f0644ac748494d9c4b21/pytest_timeout-2.4.0-py3-none-any.whl", hash = "sha256:c42667e5cdadb151aeb5b26d114aff6bdf5a907f176a007a30b940d3d865b5c2", size = 14382 },
 ]
 
 [[package]]

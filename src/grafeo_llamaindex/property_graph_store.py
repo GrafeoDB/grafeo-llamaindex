@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import contextlib
+import warnings
 from collections.abc import Sequence
+from datetime import UTC, datetime
 from typing import Any
 
 import grafeo
@@ -22,6 +24,13 @@ _NAME_KEY = "name"
 _TEXT_KEY = "text"
 _LABEL_KEY = "li_label"
 _EMBEDDING_KEY = "embedding"
+_CREATED_AT_KEY = "created_at"
+_UPDATED_AT_KEY = "updated_at"
+
+
+def _row_id(value: int | dict) -> int:
+    """Extract a Grafeo ID from a query row value (int in older versions, dict in 0.5.37+)."""
+    return value["_id"] if isinstance(value, dict) else value
 
 
 def _escape(value: str) -> str:
@@ -34,6 +43,24 @@ def _validate_key(key: str) -> str:
     if not key.isidentifier():
         raise ValueError(f"Invalid property key: {key!r}")
     return key
+
+
+_INTERNAL_EDGE_KEYS = frozenset({_CREATED_AT_KEY, _UPDATED_AT_KEY})
+
+
+def _format_value(value: Any) -> str:
+    """Format a Python value as a GQL literal for safe parameter substitution."""
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (int, float)):
+        return str(value)
+    if isinstance(value, str):
+        return f"'{_escape(value)}'"
+    if isinstance(value, list):
+        return f"[{', '.join(_format_value(v) for v in value)}]"
+    return f"'{_escape(str(value))}'"
 
 
 class GrafeoPropertyGraphStore(PropertyGraphStore):
@@ -53,10 +80,12 @@ class GrafeoPropertyGraphStore(PropertyGraphStore):
         db_path: str | None = None,
         embedding_dimensions: int = 1536,
         embedding_metric: str = "cosine",
+        dedup_threshold: float | None = None,
     ) -> None:
         self._db_path = db_path
         self._embedding_dimensions = embedding_dimensions
         self._embedding_metric = embedding_metric
+        self.dedup_threshold = dedup_threshold
 
         self._db = grafeo.GrafeoDB(db_path) if db_path else grafeo.GrafeoDB()
 
@@ -67,6 +96,9 @@ class GrafeoPropertyGraphStore(PropertyGraphStore):
 
         self._vector_indexed_labels: set[str] = set()
         self._schema_cache: dict | None = None
+
+        if db_path:
+            self._rediscover_vector_indexes()
 
         # Write-through caches: LlamaIndex ID/name → Grafeo node ID.
         # Populated on upsert, lazy-filled on lookup miss, evicted on delete.
@@ -79,6 +111,26 @@ class GrafeoPropertyGraphStore(PropertyGraphStore):
         return self._db
 
     # ─── Internal helpers ─────────────────────────────────────────────────────────────────────────
+
+    def _rediscover_vector_indexes(self) -> None:
+        """Recreate vector indexes for labels whose nodes carry embeddings.
+
+        Grafeo's HNSW indexes are in-memory and not persisted to disk, so they
+        must be rebuilt when a persistent database is reopened.
+        """
+        prop_keys = self._db.schema().get("property_keys", [])
+        if _EMBEDDING_KEY not in prop_keys:
+            return
+        for entry in self._db.schema().get("labels", []):
+            label = entry["name"]
+            with contextlib.suppress(RuntimeError):
+                self._db.create_vector_index(
+                    label=label,
+                    property=_EMBEDDING_KEY,
+                    dimensions=self._embedding_dimensions,
+                    metric=self._embedding_metric,
+                )
+                self._vector_indexed_labels.add(label)
 
     def _find_node_id(self, li_id: str) -> int | None:
         if li_id in self._id_cache:
@@ -98,6 +150,59 @@ class GrafeoPropertyGraphStore(PropertyGraphStore):
             return matches[0]
         return None
 
+    def _find_similar_node(self, label: str, embedding: list[float], threshold: float) -> int | None:
+        """Find an existing node whose embedding similarity meets the threshold.
+
+        Returns the Grafeo node ID of the closest match, or None.
+        """
+        grafeo_label = label.replace(" ", "_").replace("-", "_")
+        if not grafeo_label.isidentifier():
+            grafeo_label = "node"
+
+        if grafeo_label not in self._vector_indexed_labels:
+            return None
+
+        try:
+            results = self._db.vector_search(
+                label=grafeo_label,
+                property=_EMBEDDING_KEY,
+                query=embedding,
+                k=1,
+            )
+        except RuntimeError:
+            return None
+
+        if not results:
+            return None
+
+        node_id, distance = results[0]
+        score = self._distance_to_score(distance)
+        if score >= threshold:
+            return node_id
+        return None
+
+    def _find_existing_edge(self, source_gid: int, target_gid: int, edge_type: str) -> int | None:
+        """Find an existing edge of the given type between source and target."""
+        source_node = self._db.get_node(source_gid)
+        target_node = self._db.get_node(target_gid)
+        if source_node is None or target_node is None:
+            return None
+
+        source_li_id = source_node.properties().get(_ID_KEY, "")
+        target_li_id = target_node.properties().get(_ID_KEY, "")
+        if not source_li_id or not target_li_id:
+            return None
+
+        query = (
+            f"MATCH (a)-[r:{edge_type}]->(b) "
+            f"WHERE a.{_ID_KEY} = '{_escape(source_li_id)}' "
+            f"AND b.{_ID_KEY} = '{_escape(target_li_id)}' "
+            f"RETURN r LIMIT 1"
+        )
+        for row in self._db.execute(query):
+            return _row_id(row["r"])
+        return None
+
     def _grafeo_node_to_labelled(self, node_id: int) -> LabelledNode | None:
         node = self._db.get_node(node_id)
         if node is None:
@@ -107,6 +212,8 @@ class GrafeoPropertyGraphStore(PropertyGraphStore):
         li_label = props.pop(_LABEL_KEY, "entity")
         li_id = props.pop(_ID_KEY, str(node_id))
         embedding = props.pop(_EMBEDDING_KEY, None)
+        props.pop(_CREATED_AT_KEY, None)
+        props.pop(_UPDATED_AT_KEY, None)
 
         if li_label == "text_chunk":
             text = props.pop(_TEXT_KEY, "")
@@ -202,10 +309,11 @@ class GrafeoPropertyGraphStore(PropertyGraphStore):
             rel_pattern = f":{edge_type}" if edge_type else ""
             query = f"MATCH (src)-[rel{rel_pattern}]->(tgt){where_clause} RETURN src, rel, tgt LIMIT {limit}"
             for row in self._db.execute(query):
-                edge = self._db.get_edge(row["rel"])
-                src_node = self._grafeo_node_to_labelled(row["src"])
-                tgt_node = self._grafeo_node_to_labelled(row["tgt"])
+                edge = self._db.get_edge(_row_id(row["rel"]))
+                src_node = self._grafeo_node_to_labelled(_row_id(row["src"]))
+                tgt_node = self._grafeo_node_to_labelled(_row_id(row["tgt"]))
                 if src_node and tgt_node:
+                    edge_props = {k: v for k, v in edge.properties().items() if k not in _INTERNAL_EDGE_KEYS}
                     triplets.append(
                         (
                             src_node,
@@ -213,11 +321,18 @@ class GrafeoPropertyGraphStore(PropertyGraphStore):
                                 label=edge.edge_type,
                                 source_id=src_node.id,
                                 target_id=tgt_node.id,
-                                properties=edge.properties(),
+                                properties=edge_props,
                             ),
                             tgt_node,
                         )
                     )
+        if properties:
+            triplets = [
+                t
+                for t in triplets
+                if all(t[0].properties.get(k) == v or t[2].properties.get(k) == v for k, v in properties.items())
+            ]
+
         return triplets
 
     def get_rel_map(
@@ -252,11 +367,11 @@ class GrafeoPropertyGraphStore(PropertyGraphStore):
 
             next_frontier: dict[int, str] = {}
             for row in self._db.execute(query):
-                edge = self._db.get_edge(row["rel"])
+                edge = self._db.get_edge(_row_id(row["rel"]))
                 if ignore_rels and edge.edge_type in ignore_rels:
                     continue
 
-                src_id, tgt_id = row["src"], row["tgt"]
+                src_id, tgt_id = _row_id(row["src"]), _row_id(row["tgt"])
                 edge_key = f"{src_id}-{edge.edge_type}-{tgt_id}"
                 if edge_key in seen_edges:
                     continue
@@ -265,6 +380,7 @@ class GrafeoPropertyGraphStore(PropertyGraphStore):
                 src_node = self._grafeo_node_to_labelled(src_id)
                 tgt_node = self._grafeo_node_to_labelled(tgt_id)
                 if src_node and tgt_node:
+                    edge_props = {k: v for k, v in edge.properties().items() if k not in _INTERNAL_EDGE_KEYS}
                     triplets.append(
                         (
                             src_node,
@@ -272,7 +388,7 @@ class GrafeoPropertyGraphStore(PropertyGraphStore):
                                 label=edge.edge_type,
                                 source_id=src_node.id,
                                 target_id=tgt_node.id,
-                                properties=edge.properties(),
+                                properties=edge_props,
                             ),
                             tgt_node,
                         )
@@ -293,9 +409,22 @@ class GrafeoPropertyGraphStore(PropertyGraphStore):
     def upsert_nodes(self, nodes: Sequence[LabelledNode]) -> None:
         """Insert or update nodes in the graph."""
         embedded_labels: set[str] = set()
+        now = datetime.now(UTC).isoformat()
 
         for node in nodes:
             existing_gid = self._find_node_id(node.id)
+
+            # Dedup: if no exact match, try semantic similarity
+            if (
+                existing_gid is None
+                and self.dedup_threshold is not None
+                and isinstance(node, EntityNode)
+                and node.embedding
+            ):
+                similar_gid = self._find_similar_node(node.label, node.embedding, self.dedup_threshold)
+                if similar_gid is not None:
+                    existing_gid = similar_gid
+                    self._id_cache[node.id] = similar_gid
 
             props: dict[str, Any] = {_ID_KEY: node.id, _LABEL_KEY: node.label, **node.properties}
 
@@ -312,11 +441,14 @@ class GrafeoPropertyGraphStore(PropertyGraphStore):
                 props[_EMBEDDING_KEY] = node.embedding
                 embedded_labels.add(grafeo_label)
 
+            props[_UPDATED_AT_KEY] = now
+
             if existing_gid is not None:
                 for key, value in props.items():
                     self._db.set_node_property(existing_gid, key, value)
                 gid = existing_gid
             else:
+                props[_CREATED_AT_KEY] = now
                 created = self._db.create_node(labels=[grafeo_label], properties=props)
                 gid = created.id
 
@@ -330,23 +462,57 @@ class GrafeoPropertyGraphStore(PropertyGraphStore):
         self._schema_cache = None
 
     def upsert_relations(self, relations: list[Relation]) -> None:
-        """Insert or update relations (edges) in the graph."""
+        """Insert or update relations (edges) in the graph.
+
+        If an edge of the same type already exists between the same source and
+        target, its properties are updated in place and ``updated_at`` is
+        refreshed while ``created_at`` is preserved.
+        """
+        now = datetime.now(UTC).isoformat()
+
         for rel in relations:
             source_gid = self._find_node_by_name(rel.source_id) or self._find_node_id(rel.source_id)
             target_gid = self._find_node_by_name(rel.target_id) or self._find_node_id(rel.target_id)
 
             if source_gid is None or target_gid is None:
+                missing = []
+                if source_gid is None:
+                    missing.append(f"source_id={rel.source_id!r}")
+                if target_gid is None:
+                    missing.append(f"target_id={rel.target_id!r}")
+                warnings.warn(
+                    f"Skipping relation '{rel.label}': missing {', '.join(missing)}",
+                    UserWarning,
+                    stacklevel=2,
+                )
                 continue
 
             edge_type = rel.label.replace(" ", "_").replace("-", "_").upper()
-            self._db.create_edge(
-                source_id=source_gid,
-                target_id=target_gid,
-                edge_type=edge_type,
-                properties=rel.properties,
-            )
+            existing_eid = self._find_existing_edge(source_gid, target_gid, edge_type)
+
+            if existing_eid is not None:
+                for key, value in rel.properties.items():
+                    self._db.set_edge_property(existing_eid, key, value)
+                self._db.set_edge_property(existing_eid, _UPDATED_AT_KEY, now)
+            else:
+                props = {**rel.properties, _CREATED_AT_KEY: now, _UPDATED_AT_KEY: now}
+                self._db.create_edge(
+                    source_id=source_gid,
+                    target_id=target_gid,
+                    edge_type=edge_type,
+                    properties=props,
+                )
 
         self._schema_cache = None
+
+    def _evict_node_from_caches(self, gid: int) -> None:
+        """Remove all cache entries pointing to a Grafeo node ID."""
+        for li_id, cached_gid in list(self._id_cache.items()):
+            if cached_gid == gid:
+                del self._id_cache[li_id]
+        for name, cached_gid in list(self._name_cache.items()):
+            if cached_gid == gid:
+                del self._name_cache[name]
 
     def delete(
         self,
@@ -361,14 +527,26 @@ class GrafeoPropertyGraphStore(PropertyGraphStore):
                 gid = self._find_node_id(li_id)
                 if gid is not None:
                     self._db.delete_node(gid)
-                    self._id_cache.pop(li_id, None)
+                    self._evict_node_from_caches(gid)
 
         if entity_names:
             for name in entity_names:
                 gid = self._find_node_by_name(name)
                 if gid is not None:
                     self._db.delete_node(gid)
-                    self._name_cache.pop(name, None)
+                    self._evict_node_from_caches(gid)
+
+        if properties:
+            conditions = []
+            for key, value in properties.items():
+                if isinstance(value, str):
+                    conditions.append(f"n.{_validate_key(key)} = '{_escape(value)}'")
+                else:
+                    conditions.append(f"n.{_validate_key(key)} = {value}")
+            where_clause = " AND ".join(conditions)
+            for node in self._db.execute(f"MATCH (n) WHERE {where_clause} RETURN n").nodes():
+                self._db.delete_node(node.id)
+                self._evict_node_from_caches(node.id)
 
         if relation_names:
             for rel_name in relation_names:
@@ -378,7 +556,14 @@ class GrafeoPropertyGraphStore(PropertyGraphStore):
         self._schema_cache = None
 
     def structured_query(self, query: str, param_map: dict[str, Any] | None = None) -> Any:
-        """Execute a raw GQL/Cypher query against the graph."""
+        """Execute a raw GQL/Cypher query against the graph.
+
+        Cypher-style ``$param`` placeholders in *query* are replaced with escaped
+        literals from *param_map* before execution.
+        """
+        if param_map:
+            for key, value in param_map.items():
+                query = query.replace(f"${key}", _format_value(value))
         if query.strip().lower().startswith("g."):
             return list(self._db.execute_gremlin(query))
         return list(self._db.execute(query))
@@ -387,6 +572,12 @@ class GrafeoPropertyGraphStore(PropertyGraphStore):
         """Perform vector similarity search using Grafeo's HNSW index."""
         if query.query_embedding is None:
             return [], []
+
+        if len(query.query_embedding) != self._embedding_dimensions:
+            raise ValueError(
+                f"Query embedding has {len(query.query_embedding)} dimensions, "
+                f"but the store is configured for {self._embedding_dimensions}"
+            )
 
         k = query.similarity_top_k
 
@@ -436,6 +627,65 @@ class GrafeoPropertyGraphStore(PropertyGraphStore):
                 f"Edge types: {', '.join(edge_types)}",
                 f"Property keys: {', '.join(property_keys)}",
             ]
+        )
+
+    # ─── Convenience API ───────────────────────────────────────────────────────────────────────────
+
+    @property
+    def node_count(self) -> int:
+        """Total number of nodes in the graph."""
+        return self._db.node_count
+
+    @property
+    def edge_count(self) -> int:
+        """Total number of edges in the graph."""
+        return self._db.edge_count
+
+    def summary(self) -> str:
+        """Return a human-readable graph overview."""
+        schema = self.get_schema(refresh=True)
+
+        lines = [
+            f"Nodes: {self._db.node_count}",
+            f"Edges: {self._db.edge_count}",
+        ]
+
+        labels = schema.get("labels", [])
+        if labels:
+            lines.append("Labels:")
+            for entry in labels:
+                lines.append(f"  {entry['name']}: {entry['count']}")
+
+        edge_types = schema.get("edge_types", [])
+        if edge_types:
+            lines.append("Edge types:")
+            for entry in edge_types:
+                lines.append(f"  {entry['name']}: {entry['count']}")
+
+        if self.dedup_threshold is not None:
+            lines.append(f"Dedup: enabled (threshold={self.dedup_threshold})")
+        else:
+            lines.append("Dedup: disabled")
+
+        lines.append(f"Persistent: {self._db.is_persistent}")
+
+        return "\n".join(lines)
+
+    def neighbors(self, name_or_id: str, *, depth: int = 1, limit: int = 30) -> list[Triplet]:
+        """Get triplets around a node by name or ID without writing GQL."""
+        nodes = self.get(ids=[name_or_id])
+        if not nodes:
+            nodes = self.get(properties={_NAME_KEY: name_or_id})
+        if not nodes:
+            return []
+        return self.get_rel_map(nodes, depth=depth, limit=limit)
+
+    def __repr__(self) -> str:
+        return (
+            f"GrafeoPropertyGraphStore("
+            f"nodes={self._db.node_count}, "
+            f"edges={self._db.edge_count}, "
+            f"persistent={self._db.is_persistent})"
         )
 
     def persist(self, persist_path: str, fs: Any = None) -> None:

@@ -5,14 +5,14 @@
 
 # grafeo-llamaindex
 
-LlamaIndex `PropertyGraphStore` backed by [GrafeoDB](https://github.com/GrafeoDB/grafeo) — an embedded graph database with native vector search.
+LlamaIndex `PropertyGraphStore` backed by [GrafeoDB](https://github.com/GrafeoDB/grafeo), an embedded graph database with native vector search.
 
-Build knowledge graphs from documents, query them with GQL, and run vector similarity search — all in a single `.db` file. No servers, no infrastructure.
+Build knowledge graphs from documents, query them with GQL, and run vector similarity search, all in a single `.db` file. No servers, no infrastructure.
 
 ## Install
 
 ```bash
-pip install grafeo-llamaindex
+uv add grafeo-llamaindex
 ```
 
 ## Quickstart
@@ -37,13 +37,13 @@ nodes = retriever.retrieve("What are the key relationships?")
 
 ## Features
 
-- **Full PropertyGraphStore** — all 8 abstract methods implemented (`get`, `get_triplets`, `get_rel_map`, `upsert_nodes`, `upsert_relations`, `delete`, `structured_query`, `vector_query`)
-- **Structured + vector queries** — `supports_structured_queries = True` and `supports_vector_queries = True` in a single store
-- **Embedded database** — no Docker, no cloud, no external services. Just `pip install grafeo`
-- **Single-file persistence** — your entire knowledge graph lives in one `.db` file
-- **Native HNSW vector search** — embeddings stored alongside graph nodes, no separate vector DB needed
-- **Multi-language queries** — GQL, Cypher, Gremlin, GraphQL, and SPARQL all supported
-- **Built-in graph algorithms** — PageRank, Louvain, shortest paths, centrality, and 30+ more via `graph_store.client.algorithms`
+- **Full PropertyGraphStore**: all 8 abstract methods implemented (`get`, `get_triplets`, `get_rel_map`, `upsert_nodes`, `upsert_relations`, `delete`, `structured_query`, `vector_query`)
+- **Structured + vector queries**: `supports_structured_queries = True` and `supports_vector_queries = True` in a single store
+- **Embedded database**: no Docker, no cloud, no external services. Just `uv add grafeo`
+- **Single-file persistence**: the entire knowledge graph lives in one `.db` file
+- **Native HNSW vector search**: embeddings stored alongside graph nodes, no separate vector DB needed
+- **Multi-language queries**: GQL, Cypher, Gremlin, GraphQL, SPARQL and SQL/PGQ all supported
+- **Built-in graph algorithms**: PageRank, Louvain, shortest paths, centrality and 30+ more via `graph_store.client.algorithms`
 
 ## API Reference
 
@@ -53,17 +53,18 @@ nodes = retriever.retrieve("What are the key relationships?")
 from grafeo_llamaindex import GrafeoPropertyGraphStore
 
 store = GrafeoPropertyGraphStore(
-    db_path=None,                # str | None — path for persistent storage, None for in-memory
-    embedding_dimensions=1536,   # int — vector dimensions for HNSW index
-    embedding_metric="cosine",   # str — "cosine", "euclidean", "dot_product", or "manhattan"
+    db_path=None,                # str | None - path for persistent storage, None for in-memory
+    embedding_dimensions=1536,   # int - vector dimensions for HNSW index
+    embedding_metric="cosine",   # str - "cosine", "euclidean", "dot_product", or "manhattan"
+    dedup_threshold=None,        # float | None - cosine similarity threshold for entity dedup
 )
 ```
 
 **Properties:**
 
-- `store.client` — access the underlying `grafeo.GrafeoDB` instance for direct queries and algorithms
-- `store.supports_structured_queries` — `True`
-- `store.supports_vector_queries` — `True`
+- `store.client`: access the underlying `grafeo.GrafeoDB` instance for direct queries and algorithms
+- `store.supports_structured_queries`: `True`
+- `store.supports_vector_queries`: `True`
 
 **Methods (PropertyGraphStore interface):**
 
@@ -81,6 +82,54 @@ store = GrafeoPropertyGraphStore(
 | `persist(path)` | Save in-memory database to disk |
 | `close()` | Close the database connection |
 
+## Persistence
+
+The entire knowledge graph lives in a single `.db` file. Pass `db_path` to store data on disk, or omit it for in-memory use.
+
+```python
+from grafeo_llamaindex import GrafeoPropertyGraphStore
+
+# Create and populate
+store = GrafeoPropertyGraphStore(db_path="./my_graph.db")
+# ... upsert nodes and relations ...
+store.close()
+
+# Reopen later with the same path
+store = GrafeoPropertyGraphStore(db_path="./my_graph.db")
+print(store.node_count, store.edge_count)  # data is still there
+```
+
+You can also save an in-memory store to disk:
+
+```python
+store = GrafeoPropertyGraphStore()  # in-memory
+# ... populate ...
+store.persist("./snapshot.db")
+```
+
+## Deduplication
+
+When `dedup_threshold` is set, `upsert_nodes` checks whether an incoming `EntityNode`'s embedding is similar enough to an existing node (same label) to merge them instead of creating a duplicate.
+
+```python
+store = GrafeoPropertyGraphStore(
+    dedup_threshold=0.95,  # cosine similarity threshold
+    embedding_dimensions=1536,
+)
+```
+
+Key behavior:
+
+- **Threshold semantics**: if `cosine_similarity(new, existing) >= dedup_threshold`, the new node merges into the existing one (properties are overwritten, the original `created_at` timestamp is preserved).
+- **Label-scoped**: dedup only compares nodes with the same label. A "Person" and a "Company" with identical embeddings are never merged.
+- **ChunkNode excluded**: `ChunkNode` objects are never deduplicated, only `EntityNode`.
+- **Requires embedding**: nodes without an embedding are never deduplicated.
+- **Runtime toggle**: you can set `store.dedup_threshold = 0.9` at any time and it takes effect on the next `upsert_nodes` call.
+
+## Relation Upsert Behavior
+
+`upsert_relations` silently skips relations whose `source_id` or `target_id` does not match any existing node (by name or LlamaIndex ID). A `UserWarning` is emitted for each skipped relation, so you can catch these with Python's `warnings` module if needed.
+
 ## Comparison
 
 | | Neo4j | FalkorDB | **Grafeo** |
@@ -88,16 +137,17 @@ store = GrafeoPropertyGraphStore(
 | Requires server | Yes | Yes | **No** (embedded) |
 | Vector search | Plugin (5.x+) | Limited | **Native HNSW** |
 | Graph algorithms | GDS plugin ($) | Built-in | **Built-in (30+)** |
-| Query languages | Cypher | Cypher | **GQL, Cypher, Gremlin, GraphQL, SPARQL** |
-| Deployment | Docker/Cloud | Docker/Cloud | **`pip install grafeo`** |
+| Query languages | Cypher | Cypher | **GQL, Cypher, Gremlin, GraphQL, SPARQL, SQL/PGQ** |
+| Deployment | Docker/Cloud | Docker/Cloud | **`uv add grafeo`** |
 | Persistence | Server-managed | Server-managed | **Single `.db` file** |
 
 ## Examples
 
 See the [`examples/`](examples/) directory:
 
-- **[`basic_graph_rag.py`](examples/basic_graph_rag.py)** — build a Property Graph Index from documents and query it
-- **[`hybrid_retrieval.py`](examples/hybrid_retrieval.py)** — structured queries + vector search + PageRank, all in one script
+- **[`mock_embedding_demo.py`](examples/mock_embedding_demo.py)**: full demo with hand-crafted embeddings, no API key required
+- **[`basic_graph_rag.py`](examples/basic_graph_rag.py)**: build a Property Graph Index from documents and query it (requires OpenAI API key)
+- **[`hybrid_retrieval.py`](examples/hybrid_retrieval.py)**: structured queries + vector search + PageRank, all in one script
 
 ## Development
 

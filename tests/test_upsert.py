@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import time
+import warnings
+
 from llama_index.core.graph_stores.types import ChunkNode, EntityNode, Relation
 
 from grafeo_llamaindex import GrafeoPropertyGraphStore
@@ -93,11 +96,102 @@ class TestUpsertRelations:
 
     def test_missing_source_node(self, store: GrafeoPropertyGraphStore) -> None:
         store.upsert_nodes([EntityNode(name="Bob", label="person", properties={})])
-        store.upsert_relations(
-            [
-                Relation(label="KNOWS", source_id="NonExistent", target_id="Bob", properties={}),
-            ]
-        )
-        # No crash, relation silently skipped
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            store.upsert_relations(
+                [
+                    Relation(label="KNOWS", source_id="NonExistent", target_id="Bob", properties={}),
+                ]
+            )
+        # Relation skipped with a warning
+        assert len(w) == 1
+        assert "NonExistent" in str(w[0].message)
         triplets = store.get_triplets()
         assert len(triplets) == 0
+
+
+class TestRelationUpsertDedup:
+    """Upserting the same (source, type, target) twice should update, not duplicate."""
+
+    def test_duplicate_relation_updates_not_duplicates(self, store: GrafeoPropertyGraphStore) -> None:
+        store.upsert_nodes(
+            [
+                EntityNode(name="Alice", label="person", properties={}),
+                EntityNode(name="Bob", label="person", properties={}),
+            ]
+        )
+        store.upsert_relations([Relation(label="KNOWS", source_id="Alice", target_id="Bob", properties={"v": 1})])
+        store.upsert_relations([Relation(label="KNOWS", source_id="Alice", target_id="Bob", properties={"v": 2})])
+
+        assert store.edge_count == 1
+        triplets = store.get_triplets(entity_names=["Alice"])
+        assert len(triplets) == 1
+        assert triplets[0][1].properties["v"] == 2
+
+    def test_different_types_kept_separate(self, store: GrafeoPropertyGraphStore) -> None:
+        store.upsert_nodes(
+            [
+                EntityNode(name="Alice", label="person", properties={}),
+                EntityNode(name="Bob", label="person", properties={}),
+            ]
+        )
+        store.upsert_relations([Relation(label="KNOWS", source_id="Alice", target_id="Bob", properties={})])
+        store.upsert_relations([Relation(label="LIKES", source_id="Alice", target_id="Bob", properties={})])
+
+        assert store.edge_count == 2
+
+    def test_different_targets_kept_separate(self, store: GrafeoPropertyGraphStore) -> None:
+        store.upsert_nodes(
+            [
+                EntityNode(name="Alice", label="person", properties={}),
+                EntityNode(name="Bob", label="person", properties={}),
+                EntityNode(name="Carol", label="person", properties={}),
+            ]
+        )
+        store.upsert_relations(
+            [
+                Relation(label="KNOWS", source_id="Alice", target_id="Bob", properties={}),
+                Relation(label="KNOWS", source_id="Alice", target_id="Carol", properties={}),
+            ]
+        )
+
+        assert store.edge_count == 2
+
+
+class TestRelationTimestamps:
+    """Edge timestamps: created_at preserved on update, updated_at refreshed."""
+
+    def test_created_at_preserved_on_update(self, store: GrafeoPropertyGraphStore) -> None:
+        store.upsert_nodes(
+            [
+                EntityNode(name="Alice", label="person", properties={}),
+                EntityNode(name="Bob", label="person", properties={}),
+            ]
+        )
+        store.upsert_relations([Relation(label="KNOWS", source_id="Alice", target_id="Bob", properties={})])
+
+        # Read raw edge to check internal timestamps
+        edge = store.client.get_edge(0)
+        created = edge.properties()["created_at"]
+
+        time.sleep(0.01)  # ensure wall clock advances
+        store.upsert_relations([Relation(label="KNOWS", source_id="Alice", target_id="Bob", properties={"v": 2})])
+
+        edge2 = store.client.get_edge(0)
+        assert edge2.properties()["created_at"] == created
+        assert edge2.properties()["updated_at"] > created
+
+    def test_timestamps_not_leaked_to_triplets(self, store: GrafeoPropertyGraphStore) -> None:
+        store.upsert_nodes(
+            [
+                EntityNode(name="Alice", label="person", properties={}),
+                EntityNode(name="Bob", label="person", properties={}),
+            ]
+        )
+        store.upsert_relations([Relation(label="KNOWS", source_id="Alice", target_id="Bob", properties={})])
+
+        triplets = store.get_triplets(entity_names=["Alice"])
+        assert len(triplets) == 1
+        rel_props = triplets[0][1].properties
+        assert "created_at" not in rel_props
+        assert "updated_at" not in rel_props
