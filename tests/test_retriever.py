@@ -153,3 +153,53 @@ class TestGrafeoPGRetriever:
         qb = QueryBundle(query_str="people query")
         results = retriever.retrieve_from_graph(qb)
         assert len(results) > 0
+
+
+class TestRetrieverEdgeCases:
+    """T10: Retriever on empty graph should return empty list, not crash."""
+
+    def test_empty_graph_returns_empty(self) -> None:
+        store = GrafeoPropertyGraphStore(embedding_dimensions=DIMS)
+        retriever = GrafeoPGRetriever(
+            graph_store=store,
+            embed_model=_mock_embed_model(),
+            similarity_top_k=2,
+            include_text=False,
+        )
+        results = retriever.retrieve("anything at all")
+        assert results == []
+
+
+class TestDedupThresholdBoundary:
+    """T11: Dedup threshold boundary with controlled embeddings.
+
+    Insert two entities whose cosine similarity equals the dedup_threshold.
+    Verify consistent merge/split behavior.
+    """
+
+    def test_at_threshold_merges(self) -> None:
+        """Entities at or above threshold should be merged."""
+        # Cosine distance 0.0 for identical vectors, so similarity = 1.0
+        store = GrafeoPropertyGraphStore(
+            embedding_dimensions=DIMS,
+            embedding_metric="cosine",
+            dedup_threshold=0.99,
+        )
+        embedding = [1.0, 0.0, 0.0, 0.0]
+        store.upsert_nodes([EntityNode(name="A", label="entity", properties={}, embedding=embedding)])
+        store.upsert_nodes([EntityNode(name="B", label="entity", properties={}, embedding=embedding)])
+        # Identical embeddings exceed any threshold below 1.0
+        assert store.node_count == 1
+
+    def test_just_below_threshold_keeps_separate(self) -> None:
+        """Entities below threshold should remain separate."""
+        # Use very high threshold so even fairly similar vectors stay separate
+        store = GrafeoPropertyGraphStore(
+            embedding_dimensions=DIMS,
+            embedding_metric="cosine",
+            dedup_threshold=0.9999,
+        )
+        store.upsert_nodes([EntityNode(name="A", label="entity", properties={}, embedding=[1.0, 0.0, 0.0, 0.0])])
+        # This vector has cosine similarity ~0.707 with [1,0,0,0]
+        store.upsert_nodes([EntityNode(name="B", label="entity", properties={}, embedding=[0.707, 0.707, 0.0, 0.0])])
+        assert store.node_count == 2

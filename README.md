@@ -56,6 +56,7 @@ store = GrafeoPropertyGraphStore(
     db_path=None,                # str | None - path for persistent storage, None for in-memory
     embedding_dimensions=1536,   # int - vector dimensions for HNSW index
     embedding_metric="cosine",   # str - "cosine", "euclidean", "dot_product", or "manhattan"
+    dedup_threshold=None,        # float | None - cosine similarity threshold for entity dedup
 )
 ```
 
@@ -81,6 +82,54 @@ store = GrafeoPropertyGraphStore(
 | `persist(path)` | Save in-memory database to disk |
 | `close()` | Close the database connection |
 
+## Persistence
+
+The entire knowledge graph lives in a single `.db` file. Pass `db_path` to store data on disk, or omit it for in-memory use.
+
+```python
+from grafeo_llamaindex import GrafeoPropertyGraphStore
+
+# Create and populate
+store = GrafeoPropertyGraphStore(db_path="./my_graph.db")
+# ... upsert nodes and relations ...
+store.close()
+
+# Reopen later with the same path
+store = GrafeoPropertyGraphStore(db_path="./my_graph.db")
+print(store.node_count, store.edge_count)  # data is still there
+```
+
+You can also save an in-memory store to disk:
+
+```python
+store = GrafeoPropertyGraphStore()  # in-memory
+# ... populate ...
+store.persist("./snapshot.db")
+```
+
+## Deduplication
+
+When `dedup_threshold` is set, `upsert_nodes` checks whether an incoming `EntityNode`'s embedding is similar enough to an existing node (same label) to merge them instead of creating a duplicate.
+
+```python
+store = GrafeoPropertyGraphStore(
+    dedup_threshold=0.95,  # cosine similarity threshold
+    embedding_dimensions=1536,
+)
+```
+
+Key behavior:
+
+- **Threshold semantics**: if `cosine_similarity(new, existing) >= dedup_threshold`, the new node merges into the existing one (properties are overwritten, the original `created_at` timestamp is preserved).
+- **Label-scoped**: dedup only compares nodes with the same label. A "Person" and a "Company" with identical embeddings are never merged.
+- **ChunkNode excluded**: `ChunkNode` objects are never deduplicated, only `EntityNode`.
+- **Requires embedding**: nodes without an embedding are never deduplicated.
+- **Runtime toggle**: you can set `store.dedup_threshold = 0.9` at any time and it takes effect on the next `upsert_nodes` call.
+
+## Relation Upsert Behavior
+
+`upsert_relations` silently skips relations whose `source_id` or `target_id` does not match any existing node (by name or LlamaIndex ID). A `UserWarning` is emitted for each skipped relation, so you can catch these with Python's `warnings` module if needed.
+
 ## Comparison
 
 | | Neo4j | FalkorDB | **Grafeo** |
@@ -96,7 +145,8 @@ store = GrafeoPropertyGraphStore(
 
 See the [`examples/`](examples/) directory:
 
-- **[`basic_graph_rag.py`](examples/basic_graph_rag.py)**: build a Property Graph Index from documents and query it
+- **[`mock_embedding_demo.py`](examples/mock_embedding_demo.py)**: full demo with hand-crafted embeddings, no API key required
+- **[`basic_graph_rag.py`](examples/basic_graph_rag.py)**: build a Property Graph Index from documents and query it (requires OpenAI API key)
 - **[`hybrid_retrieval.py`](examples/hybrid_retrieval.py)**: structured queries + vector search + PageRank, all in one script
 
 ## Development
