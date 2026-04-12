@@ -141,7 +141,9 @@ class TestSpecialCharacterProperties:
         # Look up by the node's actual id (LlamaIndex may sanitize the id)
         results = store.get(ids=[node.id])
         assert len(results) == 1
-        assert results[0].name == name
+        result = results[0]
+        assert isinstance(result, EntityNode)
+        assert result.name == name
 
 
 class TestSchemaCompleteness:
@@ -238,6 +240,7 @@ class TestDeleteByProperties:
         store.delete(properties={"role": "admin"})
         assert store.node_count == 1
         remaining = store.get()
+        assert isinstance(remaining[0], EntityNode)
         assert remaining[0].name == "Bob"
 
     def test_delete_by_properties_evicts_caches(self) -> None:
@@ -287,13 +290,13 @@ class TestGetTripletsPropertiesFilter:
         triplets = populated_store.get_triplets(properties={"age": 30})
         # Alice has age=30, so triplets involving Alice should match
         assert len(triplets) >= 1
-        names = {t[0].name for t in triplets} | {t[2].name for t in triplets}
+        names = {t[0].id for t in triplets} | {t[2].id for t in triplets}
         assert "Alice" in names
 
     def test_filter_by_string_property(self, populated_store: GrafeoPropertyGraphStore) -> None:
         triplets = populated_store.get_triplets(properties={"industry": "tech"})
         assert len(triplets) >= 1
-        names = {t[0].name for t in triplets} | {t[2].name for t in triplets}
+        names = {t[0].id for t in triplets} | {t[2].id for t in triplets}
         assert "Acme" in names
 
     def test_filter_by_nonexistent_property(self, populated_store: GrafeoPropertyGraphStore) -> None:
