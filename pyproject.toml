@@ -1,6 +1,6 @@
 [project]
 name = "grafeo-llamaindex"
-version = "0.2.0"
+version = "0.2.1"
 description = "LlamaIndex PropertyGraphStore backed by GrafeoDB embedded graph database"
 readme = "README.md"
 license = "Apache-2.0"
@@ -14,7 +14,7 @@ classifiers = [
     "Topic :: Database :: Database Engines/Servers",
 ]
 dependencies = [
-    "grafeo>=0.5",
+    "grafeo>=0.5.44,<0.6",
     "llama-index-core>=0.14,<1",
 ]
 
@@ -69,9 +69,9 @@ exclude_lines = [
     "raise NotImplementedError",
 ]
 
-# ── UV ────────────────────────────────────────────────────────────────────────────────────────────
-[tool.uv]
-dev-dependencies = [
+# ── Dev dependencies (installed by uv sync) ──────────────────────────────────────────────────────
+[dependency-groups]
+dev = [
     "pytest>=9",
     "pytest-asyncio>=0.25",
     "pytest-cov>=7",

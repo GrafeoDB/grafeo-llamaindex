@@ -1,12 +1,12 @@
 """Basic Graph RAG with Grafeo and LlamaIndex.
 
 Builds a Property Graph Index from documents, then queries it
-with graph-aware retrieval. All data lives in a single .db file.
+with graph-aware retrieval. All data lives in a single .grafeo file.
 
 Usage:
-    pip install grafeo-llamaindex llama-index
+    uv add grafeo-llamaindex llama-index
     export OPENAI_API_KEY=sk-...
-    python basic_graph_rag.py
+    uv run python basic_graph_rag.py
 """
 
 from __future__ import annotations
@@ -20,11 +20,11 @@ documents = SimpleDirectoryReader("./data").load_data()
 
 # 2. Create Grafeo-backed graph store
 graph_store = GrafeoPropertyGraphStore(
-    db_path="./knowledge_graph.db",
+    db_path="./knowledge_graph.grafeo",
     embedding_dimensions=1536,
 )
 
-# 3. Build the Property Graph Index — extracts entities, relations, and embeddings
+# 3. Build the Property Graph Index: extracts entities, relations, and embeddings
 index = PropertyGraphIndex.from_documents(
     documents,
     property_graph_store=graph_store,
@@ -38,6 +38,6 @@ nodes = retriever.retrieve("What are the key relationships in this dataset?")
 for node in nodes:
     print(node.text)
 
-# 5. The graph persists automatically — reopen later with:
-#    graph_store = GrafeoPropertyGraphStore(db_path="./knowledge_graph.db")
+# 5. The graph persists automatically, reopen later with:
+#    graph_store = GrafeoPropertyGraphStore(db_path="./knowledge_graph.grafeo")
 #    index = PropertyGraphIndex.from_existing(property_graph_store=graph_store)

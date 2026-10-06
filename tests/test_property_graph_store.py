@@ -225,6 +225,40 @@ class TestParamMapSubstitution:
         rows = populated_store.structured_query("MATCH (n) WHERE n.name = 'Alice' RETURN n")
         assert len(rows) == 1
 
+    def test_param_names_sharing_a_prefix(self, populated_store: GrafeoPropertyGraphStore) -> None:
+        """Text substitution of $name also rewrote $name2, producing a syntax error."""
+        rows = populated_store.structured_query(
+            "MATCH (n) WHERE n.name = $name OR n.name = $name2 RETURN n.name AS name ORDER BY name",
+            param_map={"name": "Alice", "name2": "Bob"},
+        )
+        assert [r["name"] for r in rows] == ["Alice", "Bob"]
+
+    def test_dollar_inside_string_literal_untouched(self, store: GrafeoPropertyGraphStore) -> None:
+        store.upsert_nodes([EntityNode(name="costs $age")])
+        rows = store.structured_query(
+            "MATCH (n) WHERE n.name = 'costs $age' RETURN n.name AS name", param_map={"age": 30}
+        )
+        assert rows == [{"name": "costs $age"}]
+
+    def test_dict_param(self, store: GrafeoPropertyGraphStore) -> None:
+        rows = store.structured_query("RETURN $m.k AS v", param_map={"m": {"k": 1}})
+        assert rows == [{"v": 1}]
+
+    def test_gremlin_with_params(self, populated_store: GrafeoPropertyGraphStore) -> None:
+        rows = populated_store.structured_query("g.V().has('name', $name).count()", param_map={"name": "Alice"})
+        assert rows == [{"count": 1}]
+
+    def test_errors_propagate(self, store: GrafeoPropertyGraphStore) -> None:
+        with pytest.raises(grafeo.GrafeoError):
+            store.structured_query("MATCH (n RETURN n")
+        with pytest.raises(grafeo.GrafeoError, match="Missing parameter"):
+            store.structured_query("MATCH (n) WHERE n.name = $missing RETURN n")
+
+    def test_write_refreshes_schema(self, store: GrafeoPropertyGraphStore) -> None:
+        assert "Robot" not in store.get_schema_str()
+        store.structured_query("INSERT (:Robot {name: 'R2'})", language="gql")
+        assert "Robot" in store.get_schema_str()
+
 
 class TestDeleteByProperties:
     """delete(properties=...) should remove nodes matching the given properties."""

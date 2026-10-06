@@ -117,3 +117,23 @@ class TestDistanceToScore:
         store = GrafeoPropertyGraphStore(embedding_dimensions=DIMS, embedding_metric="manhattan")
         assert store._distance_to_score(0.0) == 1.0
         assert store._distance_to_score(1.0) == pytest.approx(0.5)
+
+
+class TestIndexDroppedOutsideTheStore:
+    def test_queries_skip_a_dropped_index(self) -> None:
+        store = GrafeoPropertyGraphStore(embedding_dimensions=DIMS, dedup_threshold=0.9)
+        store.upsert_nodes(
+            [
+                EntityNode(name="a", label="person", embedding=[1.0, 0.0, 0.0, 0.0]),
+                EntityNode(name="b", label="company", embedding=[0.0, 1.0, 0.0, 0.0]),
+            ]
+        )
+        assert store.client.drop_vector_index("person", "embedding") is True
+
+        query = VectorStoreQuery(query_embedding=[1.0, 0.0, 0.0, 0.0], similarity_top_k=2)
+        nodes, _ = store.vector_query(query)
+        assert [n.id for n in nodes] == ["b"]
+
+        # Dedup cannot search the dropped index, so a near-duplicate is stored as a new node.
+        store.upsert_nodes([EntityNode(name="a2", label="person", embedding=[1.0, 0.0, 0.0, 0.0])])
+        assert store.node_count == 3

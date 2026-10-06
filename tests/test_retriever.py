@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter
 from unittest.mock import MagicMock
 
 import pytest
@@ -203,3 +204,155 @@ class TestDedupThresholdBoundary:
         # This vector has cosine similarity ~0.707 with [1,0,0,0]
         store.upsert_nodes([EntityNode(name="B", label="entity", properties={}, embedding=[0.707, 0.707, 0.0, 0.0])])
         assert store.node_count == 2
+
+
+def _old_pagerank_scores(store: GrafeoPropertyGraphStore) -> dict[str, float]:
+    """The 0.2.0 implementation: PageRank, then read every node to map it to its LlamaIndex ID."""
+    db = store.client
+    raw = db.algorithms.pagerank()
+    if not raw:
+        return {}
+    max_score = max(raw.values()) or 1.0
+    result: dict[str, float] = {}
+    for gid, score in raw.items():
+        node = db.get_node(gid)
+        if node is None:
+            continue
+        result[node.properties().get("li_id", str(gid))] = score / max_score
+    return result
+
+
+class _OldScoringRetriever(GrafeoPGRetriever):
+    def _pagerank_scores(self, node_ids: set[str]) -> dict[str, float]:
+        return _old_pagerank_scores(self._grafeo_store)
+
+
+class _CountingDB:
+    """Delegates to a GrafeoDB and counts the attributes the store reads."""
+
+    def __init__(self, db: object) -> None:
+        self._db = db
+        self.calls: Counter[str] = Counter()
+
+    def __getattr__(self, name: str) -> object:
+        self.calls[name] += 1
+        return getattr(self._db, name)
+
+
+def _hub_store() -> GrafeoPropertyGraphStore:
+    """A star around Hub plus a chain, so PageRank differs between nodes, and 300 unconnected nodes."""
+    store = GrafeoPropertyGraphStore(embedding_dimensions=DIMS)
+    names = ["Hub", "A", "B", "C", "D", "E"]
+    store.upsert_nodes(
+        [EntityNode(name=n, embedding=[0.9 - 0.1 * i, 0.1 + 0.1 * i, 0.2, 0.1]) for i, n in enumerate(names)]
+    )
+    store.upsert_nodes([EntityNode(name=f"x{i}") for i in range(300)])
+    store.upsert_relations(
+        [Relation(label="LINKS", source_id=n, target_id="Hub") for n in ["A", "B", "C"]]
+        + [Relation(label="NEXT", source_id="Hub", target_id="D"), Relation(label="NEXT", source_id="D", target_id="E")]
+    )
+    # A node written outside the store, without li_id: named by its Grafeo ID in triplets.
+    outsider = store.client.create_node(labels=["entity"], properties={})
+    store.client.create_edge(
+        source_id=outsider.id, target_id=store._find_node_id("E"), edge_type="POINTS", properties={}
+    )
+    return store
+
+
+def _gid(store: GrafeoPropertyGraphStore, li_id: str) -> int:
+    gid = store._find_node_id(li_id)
+    assert gid is not None
+    return gid
+
+
+class TestPageRankScores:
+    def test_same_scores_as_before(self) -> None:
+        store = _hub_store()
+        retriever = GrafeoPGRetriever(graph_store=store, embed_model=_mock_embed_model())
+        old = _old_pagerank_scores(store)
+        triplet_ids = {t[0].id for t in store.get_triplets()} | {t[2].id for t in store.get_triplets()}
+        new = retriever._pagerank_scores(triplet_ids)
+        assert new.keys() == triplet_ids
+        assert new == pytest.approx({li_id: old.get(li_id, 0.0) for li_id in triplet_ids})
+
+    @pytest.mark.parametrize("alpha", [0.0, 0.5, 0.7])
+    def test_same_ranking_as_before(self, alpha: float) -> None:
+        store = _hub_store()
+        results = [
+            cls(
+                graph_store=store,
+                embed_model=_mock_embed_model(),
+                similarity_top_k=3,
+                path_depth=2,
+                alpha=alpha,
+                include_text=False,
+            ).retrieve("q")
+            for cls in (GrafeoPGRetriever, _OldScoringRetriever)
+        ]
+        new, old = results
+        assert [r.text for r in new] == [r.text for r in old]
+        assert [r.score for r in new] == pytest.approx([r.score for r in old])
+
+    def test_second_query_reads_no_node_list(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        store = _hub_store()
+        counting = _CountingDB(store.client)
+        monkeypatch.setattr(store, "_db", counting)
+        retriever = GrafeoPGRetriever(
+            graph_store=store, embed_model=_mock_embed_model(), similarity_top_k=3, path_depth=2, include_text=False
+        )
+
+        assert retriever.retrieve("q")
+        assert counting.calls["algorithms"] == 1
+        first_reads = counting.calls["get_node"]
+        assert first_reads < 100  # the 0.2.0 retriever read all 307 nodes on every query
+
+        assert retriever.retrieve("q")
+        assert counting.calls["algorithms"] == 1  # PageRank came from the cache
+        assert counting.calls["get_node"] - first_reads < 100
+
+    def test_writes_through_the_store_invalidate(self) -> None:
+        store = _hub_store()
+        before = store._pagerank()
+        assert store._pagerank() is before  # cached
+
+        store.upsert_relations([Relation(label="LINKS", source_id="E", target_id="A")])
+        assert store._pagerank_cache is None
+        after_upsert = store._pagerank()
+        assert after_upsert[_gid(store, "A")] != before[_gid(store, "A")]
+
+        store.upsert_nodes([EntityNode(name="new")])
+        assert store._pagerank_cache is None
+        assert _gid(store, "new") in store._pagerank()
+
+        store.delete(ids=["Hub"])
+        assert store._pagerank_cache is None
+        assert store._find_node_id("Hub") is None
+        assert len(store._pagerank()) == store.node_count
+
+        store._pagerank()
+        store.structured_query("MATCH (n) WHERE n.name = 'D' DETACH DELETE n")
+        assert store._pagerank_cache is None
+        assert len(store._pagerank()) == store.node_count
+
+    def test_writes_through_client_are_detected(self) -> None:
+        store = _hub_store()
+        before = store._pagerank()
+        a, e = _gid(store, "A"), _gid(store, "E")
+        store.client.create_edge(source_id=e, target_id=a, edge_type="LINKS", properties={})  # bypasses the store
+        after = store._pagerank()
+        assert after is not before
+        assert after[a] > before[a]
+
+    def test_reads_keep_the_cache(self) -> None:
+        store = _hub_store()
+        before = store._pagerank()
+        store.get(ids=["Hub"])
+        store.get_triplets(entity_names=["Hub"])
+        store.get_rel_map(store.get(ids=["Hub"]), depth=2)
+        assert store._pagerank() is before
+
+    def test_empty_graph(self) -> None:
+        store = GrafeoPropertyGraphStore(embedding_dimensions=DIMS)
+        assert store._pagerank() == {}
+        retriever = GrafeoPGRetriever(graph_store=store, embed_model=_mock_embed_model())
+        assert retriever._pagerank_scores({"anything"}) == {}

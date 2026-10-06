@@ -44,6 +44,7 @@ class GrafeoPGRetriever(BasePGRetriever):
         self._limit = limit
         self._alpha = alpha
         self._use_pagerank = use_pagerank
+        self._grafeo_store = graph_store
 
         super().__init__(
             graph_store=graph_store,
@@ -52,22 +53,22 @@ class GrafeoPGRetriever(BasePGRetriever):
             **kwargs,
         )
 
-    def _compute_pagerank_scores(self) -> dict[str, float]:
-        """Run PageRank on the underlying Grafeo DB and map node IDs to normalised scores."""
-        db = self._graph_store.client
-        raw = db.algorithms.pagerank()
-        if not raw:
-            return {}
+    def _pagerank_scores(self, node_ids: set[str]) -> dict[str, float]:
+        """Normalised PageRank (highest is 1.0) of the given LlamaIndex node IDs.
 
-        # raw is dict[int, float] mapping Grafeo internal ID → score
-        max_score = max(raw.values()) or 1.0
+        Reads the store's cached PageRank and resolves only these nodes, instead of reading every
+        node of the graph on every query. Empty when the graph has no nodes.
+        """
+        store = self._grafeo_store
+        scores = store._pagerank()
+        if not scores:
+            return {}
         result: dict[str, float] = {}
-        for gid, score in raw.items():
-            node = db.get_node(gid)
-            if node is None:
-                continue
-            li_id = node.properties().get("li_id", str(gid))
-            result[li_id] = score / max_score  # normalise to [0, 1]
+        for li_id in node_ids:
+            gid = store._find_node_id(li_id)
+            if gid is None and li_id.isdigit():
+                gid = int(li_id)  # a node written without a LlamaIndex ID is named by its Grafeo ID
+            result[li_id] = scores.get(gid, 0.0) if gid is not None else 0.0
         return result
 
     def retrieve_from_graph(self, query_bundle: QueryBundle) -> list[NodeWithScore]:
@@ -98,7 +99,9 @@ class GrafeoPGRetriever(BasePGRetriever):
             return []
 
         # 4. Score each triplet
-        pagerank_map = self._compute_pagerank_scores() if self._use_pagerank else {}
+        pagerank_map: dict[str, float] = {}
+        if self._use_pagerank:
+            pagerank_map = self._pagerank_scores({t[0].id for t in triplets} | {t[2].id for t in triplets})
 
         scores: list[float] = []
         for triplet in triplets:

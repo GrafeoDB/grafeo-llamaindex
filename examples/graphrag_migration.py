@@ -4,8 +4,8 @@ Reads the parquet files produced by `graphrag index` and loads entities,
 relationships, and communities into a GrafeoPropertyGraphStore.
 
 Usage:
-    pip install grafeo-llamaindex pandas pyarrow
-    python graphrag_migration.py --input ./graphrag-output --output ./migrated.db
+    uv add grafeo-llamaindex pandas pyarrow
+    uv run python graphrag_migration.py --input ./graphrag-output --output ./migrated.grafeo
 
 Requires:
     - pandas (for parquet reading)
@@ -144,7 +144,7 @@ def load_communities(graph_store: GrafeoPropertyGraphStore, output_dir: Path) ->
 def main() -> None:
     parser = argparse.ArgumentParser(description="Migrate GraphRAG parquet output into Grafeo")
     parser.add_argument("--input", required=True, help="Path to GraphRAG output directory")
-    parser.add_argument("--output", default="./graphrag_migrated.db", help="Path for Grafeo database")
+    parser.add_argument("--output", default="./graphrag_migrated.grafeo", help="Path for Grafeo database")
     args = parser.parse_args()
 
     output_dir = Path(args.input)

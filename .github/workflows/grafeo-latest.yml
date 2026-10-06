@@ -1,0 +1,46 @@
+name: Grafeo latest
+
+# Runs the suite against the newest grafeo on PyPI, pre-releases included, so that an engine
+# release that breaks this package is caught before users hit it.
+#   allowed: the newest grafeo that pyproject.toml accepts
+#   newest:  the newest grafeo on PyPI, even outside that range (signals when to widen the pin)
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: grafeo ${{ matrix.grafeo }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        grafeo: ["allowed", "newest"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python 3.13
+        run: uv python install 3.13
+
+      - name: Install dependencies with the newest allowed grafeo
+        run: uv sync --python 3.13 --upgrade-package grafeo --prerelease allow
+
+      - name: Install the newest grafeo on PyPI
+        if: matrix.grafeo == 'newest'
+        run: uv pip install --upgrade --prerelease allow grafeo
+
+      - name: Show grafeo version
+        run: uv run --no-sync python -c "import grafeo; print(grafeo.__version__, grafeo.build_info())"
+
+      - name: Engine contract
+        run: uv run --no-sync pytest tests/test_grafeo_contract.py -v --no-cov
+
+      - name: Test
+        run: uv run --no-sync pytest -v

@@ -3,7 +3,9 @@ from __future__ import annotations
 import time
 import warnings
 
+import pytest
 from llama_index.core.graph_stores.types import ChunkNode, EntityNode, Relation
+from llama_index.core.vector_stores.types import VectorStoreQuery
 
 from grafeo_llamaindex import GrafeoPropertyGraphStore
 
@@ -195,3 +197,101 @@ class TestRelationTimestamps:
         rel_props = triplets[0][1].properties
         assert "created_at" not in rel_props
         assert "updated_at" not in rel_props
+
+
+RELATION_LABELS = [
+    "works for/at (part-time)",
+    "Alice's friend",
+    "is-a.k.a",
+    "relates:to",
+    "gr\u00f6\u00dfer als",
+    "x]->(y) //",
+]
+
+
+class TestRelationLabels:
+    """LLM-extracted relation labels can hold any text; they used to break the generated queries."""
+
+    def test_upsert_update_and_read(self, store: GrafeoPropertyGraphStore) -> None:
+        store.upsert_nodes([EntityNode(name="A"), EntityNode(name="B")])
+        for label in RELATION_LABELS:
+            store.upsert_relations([Relation(label=label, source_id="A", target_id="B", properties={"v": 1})])
+            store.upsert_relations([Relation(label=label, source_id="A", target_id="B", properties={"v": 2})])
+        assert store.edge_count == len(RELATION_LABELS)
+        for label in RELATION_LABELS:
+            triplets = store.get_triplets(relation_names=[label])
+            assert len(triplets) == 1, label
+            assert triplets[0][1].properties["v"] == 2
+
+
+class TestEndpointResolution:
+    def test_first_node_resolved_by_name(self, store: GrafeoPropertyGraphStore) -> None:
+        """Grafeo ID 0 is a valid node: resolving it by name must not fall through as falsy.
+
+        An entity whose name holds a double quote has a LlamaIndex ID that differs from its name,
+        so the fallback lookup by ID found nothing and the relation was skipped with a warning.
+        """
+        quoted = EntityNode(name='say "hi"', label="phrase")
+        assert quoted.id != quoted.name
+        store.upsert_nodes([quoted, EntityNode(name="B")])
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            store.upsert_relations([Relation(label="R", source_id=quoted.name, target_id="B")])
+        assert store.edge_count == 1
+
+
+class TestEmbeddingDimensions:
+    def test_wrong_dimensions_rejected_before_writing(self) -> None:
+        """A mismatch used to be stored, after which the label's vector index could not be built
+        and vector_query() silently returned nothing for that label, even for correct embeddings."""
+        store = GrafeoPropertyGraphStore(embedding_dimensions=8)
+        with pytest.raises(ValueError, match="4 dimensions"):
+            store.upsert_nodes(
+                [
+                    EntityNode(name="ok", embedding=[0.1] * 8),
+                    EntityNode(name="bad", embedding=[0.1, 0.2, 0.3, 0.4]),
+                ]
+            )
+        assert store.node_count == 0
+
+        store.upsert_nodes([EntityNode(name="ok", embedding=[0.1] * 8)])
+        nodes, _ = store.vector_query(VectorStoreQuery(query_embedding=[0.1] * 8, similarity_top_k=1))
+        assert [n.id for n in nodes] == ["ok"]
+
+    def test_wrong_dimensions_with_dedup(self) -> None:
+        """With dedup on, a mismatched embedding reached Grafeo's vector search, which panics."""
+        store = GrafeoPropertyGraphStore(embedding_dimensions=4, dedup_threshold=0.9)
+        store.upsert_nodes([EntityNode(name="a", embedding=[0.1, 0.2, 0.3, 0.4])])
+        with pytest.raises(ValueError, match="dimensions"):
+            store.upsert_nodes([EntityNode(name="b", embedding=[0.1, 0.2])])
+        assert store.node_count == 1
+
+    def test_nodes_without_embedding_are_fine(self) -> None:
+        store = GrafeoPropertyGraphStore(embedding_dimensions=4)
+        store.upsert_nodes([EntityNode(name="a"), ChunkNode(id_="c", text="t", embedding=[])])
+        assert store.node_count == 2
+
+
+class TestUpdatePaths:
+    def test_update_keeps_relations(self, populated_store: GrafeoPropertyGraphStore) -> None:
+        populated_store.upsert_nodes([EntityNode(name="Bob", label="person", properties={"age": 26})])
+        assert populated_store.node_count == 3
+        assert populated_store.edge_count == 2
+        assert populated_store.get(ids=["Bob"])[0].properties["age"] == 26
+
+    def test_update_embedding_moves_vector_result(self) -> None:
+        store = GrafeoPropertyGraphStore(embedding_dimensions=4)
+        store.upsert_nodes(
+            [EntityNode(name="a", embedding=[1.0, 0.0, 0.0, 0.0]), EntityNode(name="b", embedding=[0.0, 1.0, 0.0, 0.0])]
+        )
+        store.upsert_nodes([EntityNode(name="a", embedding=[0.0, 0.0, 1.0, 0.0])])
+        nodes, _ = store.vector_query(VectorStoreQuery(query_embedding=[0.0, 0.0, 1.0, 0.0], similarity_top_k=1))
+        assert [n.id for n in nodes] == ["a"]
+        assert store.node_count == 2
+
+    def test_chunk_text_update(self, store: GrafeoPropertyGraphStore) -> None:
+        store.upsert_nodes([ChunkNode(id_="c1", text="old")])
+        store.upsert_nodes([ChunkNode(id_="c1", text="new")])
+        [chunk] = store.get(ids=["c1"])
+        assert isinstance(chunk, ChunkNode)
+        assert chunk.text == "new"
