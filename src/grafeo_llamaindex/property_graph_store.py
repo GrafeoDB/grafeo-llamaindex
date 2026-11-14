@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import os
 import threading
+import uuid
 import warnings
 from collections.abc import Iterable, Sequence
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 import grafeo
@@ -32,10 +35,10 @@ _INTERNAL_EDGE_KEYS = frozenset({_CREATED_AT_KEY, _UPDATED_AT_KEY})
 QUERY_LANGUAGES = ("gql", "cypher")
 """Languages ``structured_query`` accepts; a query starting with ``g.`` always runs as Gremlin."""
 
-DEFAULT_QUERY_LANGUAGE = "gql"
+DEFAULT_QUERY_LANGUAGE = "cypher"
 """The language ``structured_query`` uses unless the store or the call names one.
 
-The single place this default is defined. grafeo-llamaindex 0.3.0 changes it to ``"cypher"``, the
+The single place this default is defined. Cypher since grafeo-llamaindex 0.3.0 (GQL before), the
 language LlamaIndex's ``TextToCypherRetriever`` and ``CypherTemplateRetriever`` generate.
 """
 
@@ -97,9 +100,13 @@ class GrafeoPropertyGraphStore(PropertyGraphStore):
     Supports both structured queries (GQL, Cypher or Gremlin) and vector similarity search via
     Grafeo's built-in HNSW index.
 
-    ``query_language`` (``"gql"`` or ``"cypher"``, default ``DEFAULT_QUERY_LANGUAGE``) is the
-    language ``structured_query`` runs queries in; use ``"cypher"`` with LlamaIndex's
-    text-to-Cypher retrievers.
+    ``query_language`` (``"cypher"`` or ``"gql"``, default ``DEFAULT_QUERY_LANGUAGE``, Cypher) is
+    the language ``structured_query`` runs queries in. Cypher is what LlamaIndex's text-to-Cypher
+    retrievers generate.
+
+    ``db_path`` is a single database file (use the ``.grafeo`` extension): grafeo 0.6 keeps its
+    write-ahead log in ``<db_path>.wal/`` while the store is open. A database written by grafeo 0.5
+    is migrated on the first open, which keeps the old database as ``<db_path>.pre-0.6``.
     """
 
     supports_structured_queries: bool = True
@@ -158,12 +165,12 @@ class GrafeoPropertyGraphStore(PropertyGraphStore):
     # ─── Internal helpers ─────────────────────────────────────────────────────────────────────────
 
     def _rediscover_vector_indexes(self) -> None:
-        """Rebuild vector indexes for the labels of a reopened persistent database.
+        """Index the embeddings of every label of a reopened persistent database.
 
-        A WAL-directory database and a file written by ``save()`` come back without their vector
-        indexes, so every label is indexed again with this store's dimensions and metric. A label
-        whose stored embeddings have other dimensions cannot be indexed: it is reported with a
-        ``UserWarning`` and ``vector_query`` skips it.
+        Every label is indexed again with this store's dimensions and metric, whatever index the
+        file kept (a database migrated from grafeo 0.5 may have none), so ``vector_query`` uses the
+        metric the store was opened with. A label whose stored embeddings have other dimensions
+        cannot be indexed: it is reported with a ``UserWarning`` and ``vector_query`` skips it.
         """
         schema = self._db.schema()
         if _EMBEDDING_KEY not in schema.get("property_keys", []):
@@ -781,9 +788,27 @@ class GrafeoPropertyGraphStore(PropertyGraphStore):
         )
 
     def persist(self, persist_path: str, fs: Any = None) -> None:
-        """Save the database to disk."""
-        if not self._db.is_persistent:
-            self._db.save(persist_path)
+        """Save an in-memory store to the database file ``persist_path``, replacing a file there.
+
+        Grafeo's ``save()`` refuses an existing path since grafeo 0.6, so the database is saved
+        next to ``persist_path`` and then moved over it: persisting again (as
+        ``StorageContext.persist()`` does on every call) replaces the earlier copy, as it did with
+        grafeo 0.5. A store opened with ``db_path`` already writes to its file, so this does nothing.
+
+        Raises:
+            IsADirectoryError: if ``persist_path`` is a directory, such as a grafeo 0.5 database.
+        """
+        if self._db.is_persistent:
+            return
+        target = Path(persist_path)
+        if target.is_dir():
+            raise IsADirectoryError(f"Cannot persist to {persist_path!r}: it is a directory, not a database file")
+        staging = target.with_name(f"{target.name}.{uuid.uuid4().hex}.tmp")
+        try:
+            self._db.save(str(staging))
+            os.replace(staging, target)
+        finally:
+            staging.unlink(missing_ok=True)
 
     def close(self) -> None:
         """Close the database connection."""

@@ -1,6 +1,6 @@
 [project]
 name = "grafeo-llamaindex"
-version = "0.2.1"
+version = "0.3.0"
 description = "LlamaIndex PropertyGraphStore backed by GrafeoDB embedded graph database"
 readme = "README.md"
 license = "Apache-2.0"
@@ -10,11 +10,16 @@ keywords = ["llamaindex", "graph-rag", "property-graph", "grafeo", "knowledge-gr
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3.15",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Topic :: Database :: Database Engines/Servers",
 ]
 dependencies = [
-    "grafeo>=0.5.44,<0.6",
+    "grafeo>=0.6.2,<0.7",
     "llama-index-core>=0.14,<1",
 ]
 
@@ -55,6 +60,7 @@ python-version = "3.12"
 testpaths = ["tests"]
 addopts = "--cov=grafeo_llamaindex --cov-report=term-missing"
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 markers = ["slow: marks tests as slow (deselect with '-m \"not slow\"')"]
 
 # ── Coverage ─────────────────────────────────────────────────────────────────────────────────────
@@ -79,4 +85,5 @@ dev = [
     "ruff>=0.15",
     "ty>=0.0.16",
     "llama-index>=0.14",
+    "pandas>=2",  # examples/graphrag_migration.py, so that ty resolves it
 ]
