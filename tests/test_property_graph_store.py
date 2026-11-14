@@ -20,7 +20,7 @@ class TestInit:
         assert store.supports_vector_queries is True
 
     def test_persistent(self, tmp_path: Path) -> None:
-        db_path = str(tmp_path / "test.db")
+        db_path = str(tmp_path / "test.grafeo")
         store = GrafeoPropertyGraphStore(db_path=db_path)
         assert store._db.is_persistent
 
@@ -64,9 +64,9 @@ class TestPersist:
         from llama_index.core.graph_stores.types import EntityNode
 
         store.upsert_nodes([EntityNode(name="Alice", label="person", properties={})])
-        persist_path = str(tmp_path / "saved.db")
+        persist_path = str(tmp_path / "saved.grafeo")
         store.persist(persist_path)
-        assert Path(persist_path).exists()
+        assert Path(persist_path).is_file()
 
 
 class TestClose:

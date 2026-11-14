@@ -1,4 +1,4 @@
-"""The language structured_query() runs: GQL by default, Cypher by store option or per call."""
+"""The language structured_query() runs: Cypher by default (GQL before 0.3.0), GQL by store option or per call."""
 
 from __future__ import annotations
 
@@ -52,13 +52,12 @@ def _executed_with(
 
 
 class TestLanguageChoice:
-    def test_default_is_gql(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        assert DEFAULT_QUERY_LANGUAGE == "gql"  # 0.3.0 changes it to "cypher"
+    def test_default_is_cypher(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        assert DEFAULT_QUERY_LANGUAGE == "cypher"  # GQL before 0.3.0
         store = _store()
         assert store.query_language == DEFAULT_QUERY_LANGUAGE
-        assert _executed_with(monkeypatch, store, "MATCH (n) RETURN n.name AS name") == ["execute"]
-        with pytest.raises(grafeo.GrafeoError):
-            store.structured_query(CYPHER_ONLY)
+        assert store.structured_query(CYPHER_ONLY) == [{"name": "Alice"}]
+        assert _executed_with(monkeypatch, store, "MATCH (n) RETURN n.name AS name") == ["execute_cypher"]
 
     def test_store_option(self, monkeypatch: pytest.MonkeyPatch) -> None:
         store = _store(query_language="cypher")

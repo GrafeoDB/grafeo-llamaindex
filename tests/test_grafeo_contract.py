@@ -10,6 +10,7 @@ this module against the newest grafeo on PyPI, pre-releases included.
 from __future__ import annotations
 
 import math
+from decimal import Decimal
 from pathlib import Path
 
 import grafeo
@@ -114,6 +115,28 @@ class TestNodes:
         stored = db.get_node(a)
         assert stored is not None
         assert stored.properties()["age"] == 31, _broke("upsert_nodes (update)", "set_node_property() to overwrite")
+
+    def test_null_property_is_left_out(self, db: grafeo.GrafeoDB) -> None:
+        used_by = "upsert_nodes writes LlamaIndex properties as they are, None included"
+        node = db.create_node(labels=["x"], properties={"a": None, "b": 1})
+        stored = db.get_node(node.id)
+        assert stored is not None
+        assert stored.properties() == {"b": 1}, _broke(used_by, "a None value to store no property (grafeo 0.6)")
+        db.set_node_property(node.id, "b", None)
+        stored = db.get_node(node.id)
+        assert stored is not None
+        assert stored.properties() == {}, _broke(used_by, "set_node_property(None) to remove the property")
+
+    def test_decimal_property(self, db: grafeo.GrafeoDB) -> None:
+        node = db.create_node(labels=["x"], properties={"price": Decimal("2.50")})
+        stored = db.get_node(node.id)
+        assert stored is not None
+        price = stored.properties()["price"]
+        assert price == Decimal("2.50"), _broke("upsert_nodes, get", "a Decimal property to keep its value")
+        assert isinstance(price, Decimal), _broke("upsert_nodes, get", "a Decimal to read back as a Decimal")
+        assert str(price) == "2.50", _broke("upsert_nodes, get", "a Decimal to keep its scale")
+        rows = _rows(db, "MATCH (n) WHERE n.`price` = $p0 RETURN id(n) AS node_id", {"p0": 2.5})
+        assert rows == [{"node_id": node.id}], _broke("get(properties=...)", "a float parameter to equal the decimal")
 
     def test_node_ids_not_reused(self, db: grafeo.GrafeoDB) -> None:
         first = db.create_node(labels=["x"], properties={})
@@ -234,6 +257,26 @@ class TestQueries:
             "get_rel_map", expected
         )
 
+    def test_hop_query_seeks_by_id(self, db: grafeo.GrafeoDB) -> None:
+        [row] = _rows(
+            db,
+            "EXPLAIN MATCH (n)-[rel]-(other) WHERE id(n) IN $frontier "
+            "RETURN id(rel) AS rel_id, id(other) AS other_id, type(rel) AS rel_type",
+            {"frontier": [0, 1]},
+        )
+        assert "seek: id" in row["plan"], _broke(
+            "get_rel_map runs one hop query per depth level",
+            "the frontier to be looked up by id, not every edge expanded",
+        )
+
+    def test_gql_decimal_literal(self, db: grafeo.GrafeoDB) -> None:
+        [row] = _rows(db, "RETURN 1.50 AS x")
+        expected = "a GQL number with a point to be an exact decimal"
+        assert row["x"] == Decimal("1.50"), _broke("structured_query(language='gql')", expected)
+        assert isinstance(row["x"], Decimal), _broke("structured_query", expected)
+        [row] = list(db.execute_cypher("RETURN 1.5 AS x"))
+        assert isinstance(row["x"], float), _broke("structured_query (Cypher, the default)", "a Cypher 1.5 as a float")
+
     def test_unused_params_are_ignored(self, graph: tuple[grafeo.GrafeoDB, int, int, int]) -> None:
         db, *_ = graph
         rows = _rows(db, "MATCH (n) WHERE n.name = $name RETURN id(n) AS node_id", {"name": "A", "unused": 1})
@@ -274,10 +317,13 @@ class TestSchema:
     def test_schema_shape(self, graph: tuple[grafeo.GrafeoDB, int, int, int]) -> None:
         db, *_ = graph
         schema = db.schema()
-        assert {"name": "person", "count": 2} in schema["labels"], _broke(
+        # grafeo 0.6.2 adds a 'properties' list to each label entry; match on name and count.
+        labels = {entry["name"]: entry["count"] for entry in schema["labels"]}
+        assert labels == {"person": 2}, _broke(
             "get_schema_str, summary, _rediscover_vector_indexes", "schema()['labels'] as [{'name', 'count'}]"
         )
-        assert {"name": "KNOWS", "count": 1} in schema["edge_types"], _broke(
+        edge_types = {entry["name"]: entry["count"] for entry in schema["edge_types"]}
+        assert edge_types == {"KNOWS": 1}, _broke(
             "get_schema_str, summary", "schema()['edge_types'] as [{'name', 'count'}]"
         )
         assert {"li_id", "name", "age", "since"} <= set(schema["property_keys"]), _broke(
@@ -312,6 +358,11 @@ class TestVectorIndex:
         db.create_node(labels=["e"], properties={"embedding": [1.0, 0.0, 0.0, 0.0]})
         with pytest.raises(RuntimeError):
             db.create_vector_index(label="e", property="embedding", dimensions=DIMS * 2, metric="cosine")
+
+    def test_wrong_query_size_raises(self, db: grafeo.GrafeoDB) -> None:
+        db.create_vector_index(label="e", property="embedding", dimensions=DIMS, metric="cosine")
+        with pytest.raises(grafeo.GrafeoError):  # 0.5.44 panicked (PanicException is no RuntimeError)
+            self._search(db, [1.0, 0.0])
 
     def test_search_without_index_raises(self, db: grafeo.GrafeoDB) -> None:
         with pytest.raises(RuntimeError):
@@ -390,10 +441,13 @@ class TestAlgorithms:
 
 
 class TestPersistence:
-    @pytest.mark.parametrize("name", ["graph.grafeo", "graph.db"], ids=["single_file", "wal_directory"])
+    @pytest.mark.parametrize("name", ["graph.grafeo", "graph.db"], ids=["grafeo_extension", "other_extension"])
     def test_close_and_reopen(self, tmp_path: Path, name: str) -> None:
         path = str(tmp_path / name)
         db = grafeo.GrafeoDB(path)
+        assert Path(path).is_file() and (tmp_path / f"{name}.wal").is_dir(), _broke(
+            "GrafeoPropertyGraphStore(db_path=...)", "a single database file, with its WAL in <path>.wal/ while open"
+        )
         a = db.create_node(labels=["e"], properties={"li_id": "a", "embedding": [1.0, 0.0, 0.0, 0.0]})
         b = db.create_node(labels=["e"], properties={"li_id": "b"})
         db.create_edge(source_id=a.id, target_id=b.id, edge_type="T", properties={"w": 1})
@@ -414,12 +468,27 @@ class TestPersistence:
             a.id
         ]
         reopened.close()
+        assert sorted(p.name for p in tmp_path.iterdir()) == [name], _broke(
+            "GrafeoPropertyGraphStore.close()", "close() to fold the WAL into the file and remove <path>.wal/"
+        )
 
     def test_save_in_memory_database(self, tmp_path: Path) -> None:
         db = grafeo.GrafeoDB()
         db.create_node(labels=["e"], properties={"li_id": "a"})
         path = str(tmp_path / "saved.grafeo")
         db.save(path)
+        assert sorted(p.name for p in tmp_path.iterdir()) == ["saved.grafeo"], _broke(
+            "persist() moves the saved file over the target", "save() to write one file and nothing beside it"
+        )
+        with pytest.raises(grafeo.GrafeoError):
+            db.save(path)  # persist() saves to a new path and replaces the target itself
         reopened = grafeo.GrafeoDB(path)
         assert reopened.node_count == 1, _broke("persist()", "save(path) to write a database GrafeoDB(path) opens")
         reopened.close()
+
+    def test_directory_is_refused(self, tmp_path: Path) -> None:
+        with pytest.raises(grafeo.GrafeoError):
+            grafeo.GrafeoDB(str(tmp_path))
+        assert list(tmp_path.iterdir()) == [], _broke(
+            "GrafeoPropertyGraphStore(db_path=<directory>)", "an empty directory to be refused and left as it is"
+        )
