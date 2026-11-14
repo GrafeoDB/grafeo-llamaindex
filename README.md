@@ -1,9 +1,14 @@
+<picture>
+  <source media="(max-width: 556px) and (prefers-color-scheme: dark), (min-width: 768px) and (max-width: 844px) and (prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/GrafeoDB/grafeo-llamaindex/main/.github/readme/header-narrow-dark.svg">
+  <source media="(max-width: 556px), (min-width: 768px) and (max-width: 844px)" srcset="https://raw.githubusercontent.com/GrafeoDB/grafeo-llamaindex/main/.github/readme/header-narrow-light.svg">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/GrafeoDB/grafeo-llamaindex/main/.github/readme/header-dark.svg">
+  <img alt="grafeo-llamaindex: A LlamaIndex property graph store backed by Grafeo, in one file." src="https://raw.githubusercontent.com/GrafeoDB/grafeo-llamaindex/main/.github/readme/header-light.svg" width="100%">
+</picture>
+
 [![CI](https://github.com/GrafeoDB/grafeo-llamaindex/actions/workflows/ci.yml/badge.svg)](https://github.com/GrafeoDB/grafeo-llamaindex/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/GrafeoDB/grafeo-llamaindex/graph/badge.svg)](https://codecov.io/gh/GrafeoDB/grafeo-llamaindex)
 [![PyPI](https://img.shields.io/pypi/v/grafeo-llamaindex.svg)](https://pypi.org/project/grafeo-llamaindex/)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
-
-# grafeo-llamaindex
 
 LlamaIndex `PropertyGraphStore` backed by [GrafeoDB](https://github.com/GrafeoDB/grafeo), an embedded graph database with native vector search.
 
@@ -15,7 +20,7 @@ Build knowledge graphs from documents, query them with GQL, and run vector simil
 uv add grafeo-llamaindex
 ```
 
-Requires Python 3.12+ and grafeo `>=0.5.44,<0.6`, which is installed with it. Support for grafeo 0.6 comes with grafeo-llamaindex 0.3.0.
+Requires Python 3.12+, `llama-index-core` 0.14 or later, and grafeo 0.6 (`grafeo>=0.6.2,<0.7`), which is installed with it. For grafeo 0.5, use grafeo-llamaindex 0.2.0 and pin `grafeo<0.6` as well: 0.2.0 requires `grafeo>=0.5` without an upper bound, so a new install of it gets grafeo 0.6. A database written with grafeo 0.5 is migrated the first time grafeo 0.6 opens it: read [Upgrading from grafeo 0.5](#upgrading-from-grafeo-05) first.
 
 ## Quickstart
 
@@ -41,7 +46,7 @@ nodes = retriever.retrieve("What are the key relationships?")
 
 - **Full PropertyGraphStore**: all 8 abstract methods implemented (`get`, `get_triplets`, `get_rel_map`, `upsert_nodes`, `upsert_relations`, `delete`, `structured_query`, `vector_query`)
 - **Structured + vector queries**: `supports_structured_queries = True` and `supports_vector_queries = True` in a single store
-- **Embedded database**: no Docker, no cloud, no external services. Just `uv add grafeo`
+- **Embedded database**: no Docker, no cloud, no external services. Just `uv add grafeo-llamaindex`
 - **Single-file persistence**: the entire knowledge graph lives in one `.grafeo` file
 - **Native HNSW vector search**: embeddings stored alongside graph nodes, no separate vector DB needed
 - **Multi-language queries**: GQL, Cypher, Gremlin, GraphQL, SPARQL and SQL/PGQ all supported
@@ -55,11 +60,11 @@ nodes = retriever.retrieve("What are the key relationships?")
 from grafeo_llamaindex import GrafeoPropertyGraphStore
 
 store = GrafeoPropertyGraphStore(
-    db_path=None,                # str | None - path for persistent storage, None for in-memory
-    embedding_dimensions=1536,   # int - vector dimensions; must match your embedding model
-    embedding_metric="cosine",   # str - "cosine", "euclidean", "dot_product", or "manhattan"
-    dedup_threshold=None,        # float | None - cosine similarity threshold for entity dedup
-    query_language="gql",        # str - "gql" or "cypher": the language of structured_query
+    db_path=None,  # str | None - path for persistent storage, None for in-memory
+    embedding_dimensions=1536,  # int - vector dimensions; must match your embedding model
+    embedding_metric="cosine",  # str - "cosine", "euclidean", "dot_product", or "manhattan"
+    dedup_threshold=None,  # float | None - cosine similarity threshold for entity dedup
+    query_language="cypher",  # str - "cypher" or "gql": the language of structured_query
 )
 ```
 
@@ -82,7 +87,7 @@ store = GrafeoPropertyGraphStore(
 | `structured_query(query, param_map, language)` | Execute a raw query in `language` (default: the store's `query_language`), or Gremlin when it starts with `g.`; `param_map` values are passed as query parameters (`$name`) |
 | `vector_query(query)` | HNSW similarity search over node embeddings |
 | `get_schema()` / `get_schema_str()` | Inspect graph labels, edge types, and properties |
-| `persist(path)` | Save an in-memory database to disk (use a `.grafeo` path) |
+| `persist(path)` | Save an in-memory database to a file (use a `.grafeo` path), replacing an earlier copy |
 | `close()` | Close the database connection |
 
 ## Persistence
@@ -110,13 +115,27 @@ store = GrafeoPropertyGraphStore()  # in-memory
 store.persist("./snapshot.grafeo")
 ```
 
-Use the `.grafeo` extension. Grafeo stores any other path as a directory with a write-ahead log, a layout that is deprecated from grafeo 0.6.
+A database is always a single file, whatever its extension; use `.grafeo`. While the store is open, grafeo keeps its write-ahead log in a directory next to it (`my_graph.grafeo.wal/`) and folds it into the file on `close()`. `db_path` must be a file path: a directory fails with `grafeo.GrafeoError`, an empty one included, unless it is a database written by grafeo 0.5 (see below). `persist()` replaces a file that is already at its path.
 
 Reopen a store with the same `embedding_dimensions` it was written with. Vector indexes are rebuilt on open; a label whose stored embeddings have other dimensions is reported with a `UserWarning` and left out of `vector_query`.
 
-### Upgrading to grafeo 0.6
+### Upgrading from grafeo 0.5
 
-grafeo 0.6 writes a new file format. The first time 0.6 opens a database written by 0.5.x for writing, it migrates the file and keeps the old one next to it (`my_graph.grafeo.pre-0.6`). After that, grafeo 0.5.x can no longer open the database, so close it in every 0.5.x process first and keep a backup if you may need to go back. See [Upgrading from 0.5](https://grafeo.dev/user-guide/persistence/persistent/#upgrading-from-05).
+grafeo-llamaindex 0.3 requires grafeo 0.6, which stores databases in a new format. Databases written by grafeo-llamaindex 0.2 on grafeo 0.5 keep working, after a one-way migration:
+
+1. **Back up** the database first: copy the `.grafeo` file, or the whole directory if grafeo 0.5 wrote a WAL directory (0.5 did that for any path without the `.grafeo` extension).
+2. **Stop every process** that opens it with grafeo 0.5. grafeo 0.5 cannot open the migrated database.
+3. **Open it once** with grafeo 0.6, for example with `GrafeoPropertyGraphStore(db_path=...)`. The first read-write open migrates it in place: the path becomes a single 0.6 database file, and the old database is kept, unchanged, next to it as `<path>.pre-0.6` (a file, or a directory for a WAL directory). Nodes, relations, properties and embeddings carry over, and the store rebuilds its vector indexes on open.
+4. **Keep the `.pre-0.6` copy** until you no longer need to go back. To return to grafeo 0.5, move it back to the original path and install grafeo-llamaindex 0.2.0 with `grafeo<0.6`. grafeo 0.7 will no longer read 0.5 databases, so migrate them with 0.6.
+
+What else changes with grafeo 0.6:
+
+- A property set to `None` is not stored, and properties grafeo 0.5 stored as null are gone after the migration.
+- `decimal.Decimal` properties keep their exact value and scale, and in GQL a number with a point (`1.50`) is an exact decimal, so GQL results can hold `Decimal` values. Cypher `1.5` stays a float.
+- GQL `ORDER BY` sorts nulls last in both directions (Cypher sorts them first when descending). Write `ORDER BY x DESC NULLS FIRST` for the descending order of grafeo 0.5.
+- Integer and decimal overflow and division by zero fail the query instead of giving null, and in GQL a `WHERE` right after `INSERT`, `CREATE`, `MERGE` or `DELETE` is an error.
+
+See [Upgrading from 0.5](https://docs.grafeo.dev/operate/persistence/persistent/#upgrading-from-05) and [Upgrading to 0.6](https://docs.grafeo.dev/get-started/upgrading/0.6/) in the grafeo documentation.
 
 ## Deduplication
 
@@ -145,18 +164,18 @@ Relation labels are stored as edge types in upper case, with spaces and hyphens 
 
 ## Structured Queries
 
-`structured_query` runs GQL by default. Pass `query_language="cypher"` to run Cypher instead, or choose per call with `structured_query(query, language="cypher")` (also on `astructured_query`). A query that starts with `g.` always runs as Gremlin.
+`structured_query` runs Cypher by default (GQL before 0.3.0). Pass `query_language="gql"` to run GQL instead, or choose per call with `structured_query(query, language="gql")` (also on `astructured_query`). A query that starts with `g.` always runs as Gremlin.
 
-LlamaIndex's `TextToCypherRetriever` and `CypherTemplateRetriever` generate Cypher, so create the store with `query_language="cypher"` when you use them:
+LlamaIndex's `TextToCypherRetriever` and `CypherTemplateRetriever` generate Cypher, which is the default:
 
 ```python
 from llama_index.core.indices.property_graph import TextToCypherRetriever
 
-store = GrafeoPropertyGraphStore(db_path="./my_graph.grafeo", query_language="cypher")
+store = GrafeoPropertyGraphStore(db_path="./my_graph.grafeo")
 retriever = TextToCypherRetriever(store, llm=llm)
 ```
 
-GQL and Cypher share most read queries, but Cypher-only syntax, such as a pattern in `WHERE` or `=~`, fails as GQL.
+GQL and Cypher share most read queries, but Cypher-only syntax, such as a pattern in `WHERE`, fails as GQL. They also differ in values: in GQL a number with a point is an exact decimal (`decimal.Decimal` in the results) and `ORDER BY` puts nulls last, while Cypher reads `1.5` as a float and puts nulls first when sorting descending.
 
 ## Graph Traversal
 
@@ -180,7 +199,7 @@ A store can be shared between threads (LlamaIndex uses threads for `num_workers`
 | Vector search | Plugin (5.x+) | Limited | **Native HNSW** |
 | Graph algorithms | GDS plugin ($) | Built-in | **Built-in (30+)** |
 | Query languages | Cypher | Cypher | **GQL, Cypher, Gremlin, GraphQL, SPARQL, SQL/PGQ** |
-| Deployment | Docker/Cloud | Docker/Cloud | **`uv add grafeo`** |
+| Deployment | Docker/Cloud | Docker/Cloud | **`uv add grafeo-llamaindex`** |
 | Persistence | Server-managed | Server-managed | **Single `.grafeo` file** |
 
 ## Examples
@@ -190,6 +209,7 @@ See the [`examples/`](examples/) directory:
 - **[`mock_embedding_demo.py`](examples/mock_embedding_demo.py)**: full demo with hand-crafted embeddings, no API key required
 - **[`basic_graph_rag.py`](examples/basic_graph_rag.py)**: build a Property Graph Index from documents and query it (requires OpenAI API key)
 - **[`hybrid_retrieval.py`](examples/hybrid_retrieval.py)**: structured queries + vector search + PageRank, all in one script
+- **[`graphrag_migration.py`](examples/graphrag_migration.py)**: load the parquet output of a Microsoft GraphRAG indexing run (entities, relationships, communities) into a `.grafeo` store (requires `pandas` and `pyarrow`)
 
 ## Development
 
