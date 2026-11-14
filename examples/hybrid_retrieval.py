@@ -4,8 +4,8 @@ Shows how to combine LlamaIndex's Property Graph Index with direct access
 to Grafeo's query engine and built-in graph algorithms.
 
 Usage:
-    pip install grafeo-llamaindex llama-index
-    python hybrid_retrieval.py
+    uv add grafeo-llamaindex llama-index
+    uv run python hybrid_retrieval.py
 """
 
 from __future__ import annotations
@@ -60,7 +60,7 @@ graph_store.upsert_relations(
     ]
 )
 
-# ── 1. Structured query (GQL) ───────────────────────────────────────────
+# ── 1. Structured query (Cypher, the default language) ─────────────────
 
 print("=== Structured Query ===")
 results = graph_store.structured_query("MATCH (a:entity)-[r]->(b:entity) RETURN a.name, r, b.name LIMIT 10")

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 from llama_index.core.graph_stores import SimplePropertyGraphStore
-from llama_index.core.graph_stores.types import EntityNode, PropertyGraphStore, Relation
+from llama_index.core.graph_stores.types import EntityNode, LabelledNode, PropertyGraphStore, Relation
 
 from grafeo_llamaindex import GrafeoPropertyGraphStore
 
@@ -32,7 +32,7 @@ def _load(store: PropertyGraphStore) -> PropertyGraphStore:
 def _rel_map(
     store: PropertyGraphStore, seeds: list[str], depth: int, ignore_rels: list[str] | None = None, limit: int = 100
 ) -> list[Edge]:
-    nodes = [EntityNode(name=name) for name in seeds]
+    nodes: list[LabelledNode] = [EntityNode(name=name) for name in seeds]
     triplets = store.get_rel_map(nodes, depth=depth, limit=limit, ignore_rels=ignore_rels)
     return [(t[0].id, t[1].label, t[2].id) for t in triplets]
 
@@ -81,7 +81,7 @@ class TestSameAsReferenceStore:
 
 class TestBothDirections:
     def test_incoming_relations_of_a_target(self, grafeo_store: PropertyGraphStore) -> None:
-        """Before 0.2.1 only outgoing relations were followed, so a target such as Paris had none."""
+        """Before 0.3.0 only outgoing relations were followed, so a target such as Paris had none."""
         assert set(_rel_map(grafeo_store, ["Paris"], 1)) == {("Acme", "LOCATED_IN", "Paris")}
 
     def test_second_hop_from_either_end(self, grafeo_store: PropertyGraphStore) -> None:

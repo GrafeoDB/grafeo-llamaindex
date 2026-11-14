@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sys
 import threading
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
 
 import pytest
@@ -18,7 +18,7 @@ TRIALS = 5
 
 
 @contextmanager
-def _frequent_thread_switches() -> Iterator[None]:
+def _frequent_thread_switches() -> Generator[None]:
     """Switch threads as often as possible, to make interleavings likely."""
     previous = sys.getswitchinterval()
     sys.setswitchinterval(1e-6)
@@ -28,7 +28,7 @@ def _frequent_thread_switches() -> Iterator[None]:
         sys.setswitchinterval(previous)
 
 
-def _run_together(work: Callable[[], None], threads: int = THREADS) -> list[BaseException]:
+def _run_together(work: Callable[[], object], threads: int = THREADS) -> list[BaseException]:
     barrier = threading.Barrier(threads)
     errors: list[BaseException] = []
 

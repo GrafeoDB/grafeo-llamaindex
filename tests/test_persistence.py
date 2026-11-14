@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import shutil
-import sys
 from pathlib import Path
 
+import grafeo
 import pytest
+from llama_index.core import StorageContext
 from llama_index.core.graph_stores.types import ChunkNode, EntityNode, Relation
 from llama_index.core.vector_stores.types import VectorStoreQuery
 
@@ -12,14 +12,9 @@ from grafeo_llamaindex import GrafeoPropertyGraphStore
 
 DIMS = 4
 
-# A database written by this store on grafeo 0.5.44 (the last 0.5 release), by running
-# ``uv run --no-sources python tests/test_persistence.py`` with grafeo 0.5.44 installed.
-# grafeo 0.6.0 migrates 0.5.x files to its new format on the first read-write open.
-FIXTURE_0_5_44 = Path(__file__).parent / "data" / "store-grafeo-0.5.44.grafeo"
-
-# Both on-disk layouts: a single .grafeo file, and the WAL directory any other path creates
-# (deprecated from grafeo 0.6.0, still readable).
-LAYOUTS = pytest.mark.parametrize("filename", ["kg.grafeo", "kg.db"], ids=["single_file", "wal_directory"])
+# Since grafeo 0.6 every database is a single file, whatever its extension. grafeo 0.5 made a WAL
+# directory for a path without the .grafeo extension; databases written by 0.5 are in test_migration.py.
+LAYOUTS = pytest.mark.parametrize("filename", ["kg.grafeo", "kg.db"], ids=["grafeo_extension", "other_extension"])
 
 
 def _vec(i: int) -> list[float]:
@@ -58,7 +53,7 @@ class TestPersistenceRoundTrip:
     """T7: Create, populate, close, reopen, verify data and indexes survive."""
 
     def test_nodes_survive_reopen(self, tmp_path: Path) -> None:
-        db_path = str(tmp_path / "persist.db")
+        db_path = str(tmp_path / "persist.grafeo")
 
         nodes = [EntityNode(name=f"entity_{i}", label="entity", properties={"idx": i}) for i in range(20)]
         relations = [
@@ -89,7 +84,7 @@ class TestPersistenceRoundTrip:
         store2.close()
 
     def test_vector_search_survives_reopen(self, tmp_path: Path) -> None:
-        db_path = str(tmp_path / "persist_vec.db")
+        db_path = str(tmp_path / "persist_vec.grafeo")
 
         store = GrafeoPropertyGraphStore(db_path=db_path, embedding_dimensions=DIMS)
         store.upsert_nodes(
@@ -122,7 +117,7 @@ class TestPersistenceRoundTrip:
 
     def test_vector_index_labels_rediscovered(self, tmp_path: Path) -> None:
         """_vector_indexed_labels is populated from existing indexes on reopen."""
-        db_path = str(tmp_path / "rediscover.db")
+        db_path = str(tmp_path / "rediscover.grafeo")
         store = GrafeoPropertyGraphStore(db_path=db_path, embedding_dimensions=DIMS)
         store.upsert_nodes(
             [
@@ -155,7 +150,7 @@ class TestPersistenceRoundTrip:
             ]
         )
 
-        persist_path = str(tmp_path / "saved.db")
+        persist_path = str(tmp_path / "saved.grafeo")
         store.persist(persist_path)
         store.close()
 
@@ -226,50 +221,68 @@ class TestFileBackedStore:
             assert ("Bob", "WORKS_AT", "Acme") in _triplets(reopened)
 
 
-class TestDatabaseWrittenByGrafeo0544:
-    """A database written on grafeo 0.5.44 keeps working on the installed grafeo
-    (on 0.6.0 its first open migrates the file to the new format)."""
+class TestSingleFile:
+    """grafeo 0.6 stores a database as one file, with its write-ahead log beside it while open."""
 
-    def test_open_query_and_write(self, tmp_path: Path) -> None:
-        db_path = tmp_path / FIXTURE_0_5_44.name
-        shutil.copyfile(FIXTURE_0_5_44, db_path)
-
+    @LAYOUTS
+    def test_database_is_one_file(self, tmp_path: Path, filename: str) -> None:
+        db_path = tmp_path / filename
         with GrafeoPropertyGraphStore(db_path=str(db_path), embedding_dimensions=DIMS) as store:
-            assert {n.id for n in store.get()} == {"Alice", "Bob", "Acme", "chunk-1"}
-            assert _triplets(store) == {
-                ("Alice", "KNOWS", "Bob"),
-                ("Bob", "WORKS_AT", "Acme"),
-                ("Alice", "MENTIONS", "chunk-1"),
-            }
-            [chunk] = store.get(ids=["chunk-1"])
-            assert isinstance(chunk, ChunkNode)
-            assert chunk.text == "Alice knows Bob."
-            assert store.get_triplets(relation_names=["KNOWS"])[0][1].properties == {"since": 2020}
-            assert _nearest(store, 1) == "Bob"
-            rel_map = store.get_rel_map(store.get(ids=["Bob"]), depth=1)
-            assert {(t[0].id, t[1].label, t[2].id) for t in rel_map} == {
-                ("Alice", "KNOWS", "Bob"),
-                ("Bob", "WORKS_AT", "Acme"),
-            }
+            _populate(store)
+            assert db_path.is_file()
+            assert (tmp_path / f"{filename}.wal").is_dir()
+        assert sorted(p.name for p in tmp_path.iterdir()) == [filename]
+        assert db_path.is_file()
 
-            store.upsert_nodes([EntityNode(name="Bob", label="person", properties={"age": 26}, embedding=_vec(1))])
-            store.delete(ids=["chunk-1"])
-            store.upsert_relations([Relation(label="KNOWS", source_id="Alice", target_id="Bob", properties={"v": 2})])
-            assert (store.node_count, store.edge_count) == (3, 2)
-
-        with GrafeoPropertyGraphStore(db_path=str(db_path), embedding_dimensions=DIMS) as store:
-            assert store.get(ids=["Bob"])[0].properties["age"] == 26
-            assert _triplets(store) == {("Alice", "KNOWS", "Bob"), ("Bob", "WORKS_AT", "Acme")}
-            assert _nearest(store, 0) == "Alice"
+    @pytest.mark.parametrize("contents", [[], ["notes.txt"]], ids=["empty", "not_a_database"])
+    def test_directory_is_refused(self, tmp_path: Path, contents: list[str]) -> None:
+        """grafeo 0.5 created a WAL-directory database in an empty directory; 0.6 refuses any
+        directory that is not a 0.5 database, and changes nothing in it."""
+        for name in contents:
+            (tmp_path / name).write_text("x")
+        with pytest.raises(grafeo.GrafeoError, match="not a database file"):
+            GrafeoPropertyGraphStore(db_path=str(tmp_path), embedding_dimensions=DIMS)
+        assert sorted(p.name for p in tmp_path.iterdir()) == contents
 
 
-if __name__ == "__main__":
-    # Regenerates FIXTURE_0_5_44; run it only with grafeo 0.5.44 installed.
-    import grafeo
+class TestPersist:
+    def test_persist_again_replaces_the_file(self, tmp_path: Path) -> None:
+        """grafeo 0.6's save() refuses an existing path; persist() replaces the earlier copy."""
+        path = tmp_path / "snapshot.grafeo"
+        store = GrafeoPropertyGraphStore(embedding_dimensions=DIMS)
+        _populate(store)
+        store.persist(str(path))
+        store.delete(ids=["Bob"])
+        store.persist(str(path))
+        store.close()
+        assert sorted(p.name for p in tmp_path.iterdir()) == ["snapshot.grafeo"]
 
-    if grafeo.__version__ != "0.5.44":
-        sys.exit(f"the fixture must be written by grafeo 0.5.44, found {grafeo.__version__}")
-    FIXTURE_0_5_44.parent.mkdir(exist_ok=True)
-    FIXTURE_0_5_44.unlink(missing_ok=True)
-    with GrafeoPropertyGraphStore(db_path=str(FIXTURE_0_5_44), embedding_dimensions=DIMS) as fixture_store:
-        _populate(fixture_store)
+        with GrafeoPropertyGraphStore(db_path=str(path), embedding_dimensions=DIMS) as reopened:
+            assert {n.id for n in reopened.get()} == {"Alice", "Acme", "chunk-1"}
+            assert _triplets(reopened) == {("Alice", "MENTIONS", "chunk-1")}
+
+    def test_persist_to_a_directory_raises(self, tmp_path: Path) -> None:
+        store = GrafeoPropertyGraphStore(embedding_dimensions=DIMS)
+        _populate(store)
+        with pytest.raises(IsADirectoryError):
+            store.persist(str(tmp_path))
+        assert list(tmp_path.iterdir()) == []
+
+    def test_persist_of_a_file_backed_store_does_nothing(self, tmp_path: Path) -> None:
+        with GrafeoPropertyGraphStore(db_path=str(tmp_path / "kg.grafeo"), embedding_dimensions=DIMS) as store:
+            store.persist(str(tmp_path / "other.grafeo"))
+        assert not (tmp_path / "other.grafeo").exists()
+
+    def test_storage_context_persists_twice(self, tmp_path: Path) -> None:
+        """LlamaIndex's StorageContext.persist() calls persist() on the graph store every time."""
+        store = GrafeoPropertyGraphStore(embedding_dimensions=DIMS)
+        _populate(store)
+        context = StorageContext.from_defaults(property_graph_store=store)
+        context.persist(persist_dir=str(tmp_path))
+        store.upsert_nodes([EntityNode(name="Dora", label="person")])
+        context.persist(persist_dir=str(tmp_path))
+        store.close()
+
+        saved = tmp_path / "property_graph_store.json"  # LlamaIndex's file name; the contents are a Grafeo database
+        with GrafeoPropertyGraphStore(db_path=str(saved), embedding_dimensions=DIMS) as reopened:
+            assert reopened.node_count == 5

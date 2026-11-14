@@ -18,7 +18,7 @@ class GrafeoPGRetriever(BasePGRetriever):
     """Property Graph retriever that leverages Grafeo's native vector search and graph algorithms.
 
     Combines vector similarity search with multi-hop graph expansion and optional
-    PageRank-weighted reranking — all within a single embedded Grafeo engine.
+    PageRank-weighted reranking, all within a single embedded Grafeo engine.
 
     Compared to LlamaIndex's built-in ``VectorContextRetriever``, this retriever
     adds PageRank blending: ``final_score = alpha * similarity + (1 - alpha) * pagerank``.
