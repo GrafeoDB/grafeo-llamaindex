@@ -6,10 +6,10 @@ resolution-markers = [
     "python_full_version >= '3.14' and sys_platform == 'emscripten'",
     "python_full_version >= '3.14' and sys_platform != 'emscripten' and sys_platform != 'win32'",
     "python_full_version == '3.13.*' and sys_platform == 'win32'",
-    "python_full_version < '3.13' and sys_platform == 'win32'",
     "python_full_version == '3.13.*' and sys_platform == 'emscripten'",
-    "python_full_version < '3.13' and sys_platform == 'emscripten'",
     "python_full_version == '3.13.*' and sys_platform != 'emscripten' and sys_platform != 'win32'",
+    "python_full_version < '3.13' and sys_platform == 'win32'",
+    "python_full_version < '3.13' and sys_platform == 'emscripten'",
     "python_full_version < '3.13' and sys_platform != 'emscripten' and sys_platform != 'win32'",
 ]
 
@@ -556,6 +556,15 @@ wheels = [
 ]
 
 [[package]]
+name = "eval-type-backport"
+version = "0.4.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/1c/15/273a4baf8248d6d76220723c3caf039d283774b31a7c46ba686120145b76/eval_type_backport-0.4.0.tar.gz", hash = "sha256:8397d25e6524c2e67b9576bb0636be27dea2192017711220c534ec2de921e9b0", size = 10260, upload-time = "2026-06-02T13:22:06.059Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/50/a7/bb99bf5e6f78736ddb53480f2c3ff3702ffe2196a7c5e1661c03081d398e/eval_type_backport-0.4.0-py3-none-any.whl", hash = "sha256:ad5e2a8db71b6696a56eafb938b0f5a337d3217f256b8e158b469422b4772b20", size = 6432, upload-time = "2026-06-02T13:22:04.827Z" },
+]
+
+[[package]]
 name = "filetype"
 version = "1.2.0"
 source = { registry = "https://pypi.org/simple" }
@@ -683,6 +692,15 @@ wheels = [
 ]
 
 [[package]]
+name = "grafeo-datasets"
+version = "0.6.3"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/05/a3/1824000ef9d9f55acc580d6aaee92acffdff341326dbb2f7716f4cc5cedd/grafeo_datasets-0.6.3.tar.gz", hash = "sha256:b58d0950905755181a9e496e973137c247980ffe361dcb91e171d47cff2b69de", size = 258446, upload-time = "2026-11-15T19:30:57.155Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/9f/e7/8e127cd346dbcdc15aa26ed2897147e15e82de9076dd1a37c144b84f2bbe/grafeo_datasets-0.6.3-py3-none-any.whl", hash = "sha256:a6ad4c07b0180bd9ec0925b5e3828dd5e38c869f7cb50056f7d5f6bb11482413", size = 268568, upload-time = "2026-11-15T19:30:55.686Z" },
+]
+
+[[package]]
 name = "grafeo-llamaindex"
 version = "0.3.0"
 source = { editable = "." }
@@ -693,7 +711,10 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "grafeo-datasets" },
     { name = "llama-index" },
+    { name = "llama-index-embeddings-mistralai" },
+    { name = "llama-index-llms-mistralai" },
     { name = "pandas" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
@@ -711,7 +732,10 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "grafeo-datasets", specifier = ">=0.6.3" },
     { name = "llama-index", specifier = ">=0.14" },
+    { name = "llama-index-embeddings-mistralai", specifier = ">=0.7" },
+    { name = "llama-index-llms-mistralai", specifier = ">=0.12" },
     { name = "pandas", specifier = ">=2" },
     { name = "pytest", specifier = ">=9" },
     { name = "pytest-asyncio", specifier = ">=0.25" },
@@ -1040,6 +1064,15 @@ wheels = [
 ]
 
 [[package]]
+name = "jsonpath-python"
+version = "1.1.6"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/98/18/4ca8742534a5993ff383f7602e325ce2d5d7cc93d72ac5e1cdedbea8a458/jsonpath_python-1.1.6.tar.gz", hash = "sha256:dded9932b4ec41fb8726e09c83afa4e6be618f938c2db287cc2a81723c639671", size = 88178, upload-time = "2026-05-07T01:26:34.482Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/55/8a/1270a6803bd821cbfcdda387eaa13cb41a7b1f7b9bd145979b3bfb9d6cb7/jsonpath_python-1.1.6-py3-none-any.whl", hash = "sha256:a1c50afd8d3fbbaf47a4873bc890dcb3c15da96f5c020327977d844d8731a2d4", size = 14453, upload-time = "2026-05-07T01:26:33.306Z" },
+]
+
+[[package]]
 name = "llama-index"
 version = "0.14.26"
 source = { registry = "https://pypi.org/simple" }
@@ -1094,6 +1127,19 @@ wheels = [
 ]
 
 [[package]]
+name = "llama-index-embeddings-mistralai"
+version = "0.7.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "llama-index-core" },
+    { name = "mistralai" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/31/e1/f9ad3e39582eb3875cf1741ff795816399fc9f6abd6d3dface1cc7092764/llama_index_embeddings_mistralai-0.7.0.tar.gz", hash = "sha256:1d5358f465a9f85404abbc02ee3f0e0a5d04ca85d323f692dea11986122ba5ab", size = 3829, upload-time = "2026-11-14T02:07:33.141Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/73/12/a697efc28abbb066b98c89eeb1f61e107c4ba68a86d7cb96b676dbab5629/llama_index_embeddings_mistralai-0.7.0-py3-none-any.whl", hash = "sha256:912781736dc2130400f00c0fafc93035a79459ee33c2f4bd72f7c419a468c81b", size = 3447, upload-time = "2026-11-14T02:07:32.332Z" },
+]
+
+[[package]]
 name = "llama-index-embeddings-openai"
 version = "0.8.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1117,6 +1163,19 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/70/ac/ffc116bac024cb0a54b4d28ca9b421e9a08f408c1fcc0039a36de2c0c97b/llama_index_instrumentation-0.6.0.tar.gz", hash = "sha256:b185c4e28a7f32899c27649cc2e2d7d54267fa2ff0cd43cbe2b5212bae98fe3a", size = 56517, upload-time = "2026-08-29T15:33:16.861Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/02/b5/332eb32835360125fa1c90a4b81c58831c48dded5b8426d44e9acd4bf328/llama_index_instrumentation-0.6.0-py3-none-any.whl", hash = "sha256:9588618b271e6c74e58dc81542ea022547c427f036e7cacb655865c4982610bb", size = 16445, upload-time = "2026-08-29T15:33:15.766Z" },
+]
+
+[[package]]
+name = "llama-index-llms-mistralai"
+version = "0.12.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "llama-index-core" },
+    { name = "mistralai" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/cc/58/2156f738718420dba73eacbfe38e35f3b06faa17d1426d30140214d0f4ee/llama_index_llms_mistralai-0.12.0.tar.gz", hash = "sha256:ff00677bd2724b4512256ae6059990e58224dc997ef14311c89369f9f7a0e736", size = 10033, upload-time = "2026-11-14T02:17:27.698Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/78/e1/eb1a20798f2591e5ccd3a096a98a2cd53e961d0c19a1f93368c195cbaabf/llama_index_llms_mistralai-0.12.0-py3-none-any.whl", hash = "sha256:a15d3ab8551249e073243af5cfeb83422deccbcbeea7e37a322bdcc6918d3e18", size = 10130, upload-time = "2026-11-14T02:17:26.809Z" },
 ]
 
 [[package]]
@@ -1269,6 +1328,25 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/55/79/de6c16cc902f4fc372236926b0ce2ab7845268dcc30fb2fbb7f71b418631/marshmallow-3.26.2.tar.gz", hash = "sha256:bbe2adb5a03e6e3571b573f42527c6fe926e17467833660bebd11593ab8dfd57", size = 222095, upload-time = "2025-12-22T06:53:53.309Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/be/2f/5108cb3ee4ba6501748c4908b908e55f42a5b66245b4cfe0c99326e1ef6e/marshmallow-3.26.2-py3-none-any.whl", hash = "sha256:013fa8a3c4c276c24d26d84ce934dc964e2aa794345a0f8c7e5a7191482c8a73", size = 50964, upload-time = "2025-12-22T06:53:51.801Z" },
+]
+
+[[package]]
+name = "mistralai"
+version = "3.7.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "eval-type-backport" },
+    { name = "httpx2" },
+    { name = "jsonpath-python" },
+    { name = "opentelemetry-api" },
+    { name = "opentelemetry-semantic-conventions" },
+    { name = "pydantic" },
+    { name = "python-dateutil" },
+    { name = "typing-inspection" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/3f/ca/10a0515ded34170e1ea451a6d1c7124361e4fab8ba5d5024db34db1fb9d3/mistralai-3.7.0.tar.gz", hash = "sha256:97cc525b8ddc96fb8b5bb08f466dd3d22f904f21ddfe45103da76c25fe601bf2", size = 773897, upload-time = "2026-11-01T20:07:28.894Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/2c/c3/428b852ffffcf6b35d046124121e75824827d222d8ada3cb19c32a47f92e/mistralai-3.7.0-py3-none-any.whl", hash = "sha256:23ceda7ae52557578427af5a9caffb2222cd11dd7d43eb1792ded35b2a84d939", size = 1818807, upload-time = "2026-11-01T20:07:26.562Z" },
 ]
 
 [[package]]
@@ -1540,6 +1618,31 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/db/fa/30f098b042a354f685def1d0fe4c817fc4a534233f497fcf5fc29467c58d/openai-3.51.0.tar.gz", hash = "sha256:1cc9b80eb0f1dc15fa45fbc122ba2c99b7e5302548060c01db5719fa6181a6a9", size = 2415149, upload-time = "2026-11-13T21:13:39.771Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/52/f9/d3d9ef409ee4e90de64c9b12f15879f56fc845c2eb9cfe6f314b402de7f1/openai-3.51.0-py3-none-any.whl", hash = "sha256:802b7e8c6ff8cf4d59a2a163126c10ce472adf0409ac41fdaadd47c9b4ed091a", size = 2446085, upload-time = "2026-11-13T21:13:37.969Z" },
+]
+
+[[package]]
+name = "opentelemetry-api"
+version = "1.45.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/19/14/cf3a6b6448849656e1e5f4e2101f3988dc6789724050096aba1bc5ccf592/opentelemetry_api-1.45.2.tar.gz", hash = "sha256:d7b0008e21e5fd61cbe7a7f34ca3b6905a78ab677d9bc395e299359c75cda6b4", size = 73277, upload-time = "2026-10-29T17:29:37.888Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a9/2d/610db864d7513158cebb8f36cc88e67e73bd6c7aa1905ef18d89e1281c81/opentelemetry_api-1.45.2-py3-none-any.whl", hash = "sha256:2cbd737377e710ee740d261c94e93fa0f08e6d037c18f17513cc0a2d94479a34", size = 60335, upload-time = "2026-10-29T17:29:06.955Z" },
+]
+
+[[package]]
+name = "opentelemetry-semantic-conventions"
+version = "0.66b2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "opentelemetry-api" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/37/3f/50f95972b50e8e353f5b9342034c9cd17730f1956f009ce6a3fbbd89f9ce/opentelemetry_semantic_conventions-0.66b2.tar.gz", hash = "sha256:7da5f1a5dc4383eb66711d4d3d3e71824d9403ac1559fea021cc103c1a4c4976", size = 150246, upload-time = "2026-10-29T17:29:55.682Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/67/bd/6bf33ed31521c565931c037e9e81bac47c1acb000e850c6e24220e2a0c00/opentelemetry_semantic_conventions-0.66b2-py3-none-any.whl", hash = "sha256:4cbe61e5f9275d57ab31708446e7938ef4291ebbe6a7fca6f7a629c5acae87d8", size = 206280, upload-time = "2026-10-29T17:29:35.062Z" },
 ]
 
 [[package]]
