@@ -1,84 +1,69 @@
-"""Graph RAG demo using MockEmbedding (no API key required).
+"""Silicon Valley graph demo with the dataset's own embeddings (no API key or model required).
 
-Builds a knowledge graph from in-memory entities and relations,
-runs vector search and graph traversal, then prints results.
+Loads the Silicon Valley (Pied Piper) dataset from grafeo.ai into a GrafeoPropertyGraphStore,
+with the 384-dimension MiniLM vectors the dataset ships, then runs vector search, graph
+traversal and lookups.
 
 Usage:
+    uv add grafeo-llamaindex "grafeo-datasets[grafeo]"
     uv run python examples/mock_embedding_demo.py
 """
 
 from __future__ import annotations
 
+from grafeo_datasets import silicon_valley
 from llama_index.core.graph_stores.types import EntityNode, Relation
 from llama_index.core.vector_stores.types import VectorStoreQuery
 
 from grafeo_llamaindex import GrafeoPropertyGraphStore
 
-DIMS = 4
+vectors = silicon_valley.vectors()  # MiniLM vectors of each node's description
+store = GrafeoPropertyGraphStore(embedding_dimensions=vectors.dimension)
 
-# 1. Create an in-memory graph store with small embeddings
-store = GrafeoPropertyGraphStore(
-    embedding_dimensions=DIMS,
-    embedding_metric="cosine",
-)
-
-# 2. Insert entities with hand-crafted embeddings
+nodes = silicon_valley.nodes()
+names = {n["key"]: n["name"] for n in nodes}
 store.upsert_nodes(
     [
         EntityNode(
-            name="Python",
-            label="language",
-            properties={"paradigm": "multi"},
-            embedding=[0.9, 0.1, 0.3, 0.2],
-        ),
-        EntityNode(
-            name="Rust",
-            label="language",
-            properties={"paradigm": "systems"},
-            embedding=[0.8, 0.2, 0.4, 0.1],
-        ),
-        EntityNode(
-            name="LlamaIndex",
-            label="framework",
-            properties={"domain": "LLM"},
-            embedding=[0.2, 0.9, 0.1, 0.8],
-        ),
-        EntityNode(
-            name="Grafeo",
-            label="database",
-            properties={"type": "graph"},
-            embedding=[0.3, 0.8, 0.2, 0.7],
-        ),
+            name=n["name"],
+            label=n["label"],
+            properties={"description": n["description"], **n["props"]},
+            embedding=[float(x) for x in vectors.by_key[n["key"]]],
+        )
+        for n in nodes
     ]
 )
-
-# 3. Insert relations
 store.upsert_relations(
     [
-        Relation(label="WRITTEN_IN", source_id="Grafeo", target_id="Rust", properties={}),
-        Relation(label="BINDINGS_FOR", source_id="Grafeo", target_id="Python", properties={}),
-        Relation(label="INTEGRATES", source_id="LlamaIndex", target_id="Grafeo", properties={}),
-        Relation(label="WRITTEN_IN", source_id="LlamaIndex", target_id="Python", properties={}),
+        Relation(label=e["type"], source_id=names[e["source"]], target_id=names[e["target"]], properties=e["props"])
+        for e in silicon_valley.edges()
     ]
 )
+print(store.summary())
 
-print(f"Graph: {store.node_count} nodes, {store.edge_count} edges\n")
+# Vector search: what is most like Jian-Yang's fridge?
+fridge = [float(x) for x in vectors.by_key["jian-yangs-fridge"]]
+found, scores = store.vector_query(VectorStoreQuery(query_embedding=fridge, similarity_top_k=4))
+print("\n=== Closest to Jian-Yang's fridge ===")
+for node, score in zip(found, scores, strict=True):
+    print(f"  {node.id} ({node.label}): similarity={score:.3f}")
 
-# 4. Vector search: find nodes closest to a "framework" embedding
-print("=== Vector Search ===")
-query = VectorStoreQuery(query_embedding=[0.25, 0.85, 0.15, 0.75], similarity_top_k=2)
-nodes, scores = store.vector_query(query)
-for node, score in zip(nodes, scores, strict=True):
-    print(f"  {node.id}: similarity={score:.3f}")
+[fridge_node] = store.get(ids=["Jian-Yang's fridge"])
+print(f"\nDoes the fridge talk? {fridge_node.properties['talks']}")
 
-# 5. Graph traversal: 2-hop neighbors from LlamaIndex
-print("\n=== 2-hop Neighbors of LlamaIndex ===")
-triplets = store.neighbors("LlamaIndex", depth=2)
-for src, rel, tgt in triplets:
+# Graph traversal: everything Gilfoyle built, and who rivals whom
+print("\n=== What Gilfoyle built ===")
+for src, rel, tgt in store.get_triplets(entity_names=["Bertram Gilfoyle"], relation_names=["BUILT"]):
     print(f"  {src.id} --[{rel.label}]--> {tgt.id}")
 
-# 6. Schema
-print(f"\n=== Schema ===\n{store.get_schema_str()}")
+print("\n=== Rivals ===")
+for src, rel, tgt in store.get_triplets(relation_names=["RIVAL_OF"]):
+    print(f"  {src.id} --[{rel.label}]--> {tgt.id}")
 
-# 7. Summary
-print(f"\n=== Summary ===\n{store.summary()}")
+print("\n=== Around Son of Anton, two hops ===")
+for src, rel, tgt in store.neighbors("Son of Anton", depth=2, limit=8):
+    print(f"  {src.id} --[{rel.label}]--> {tgt.id}")
+
+[anton_son] = store.get(ids=["Son of Anton"])
+print(f"\nSon of Anton fixes bugs by: {anton_son.properties['bug_fix_strategy']}")
+store.close()
