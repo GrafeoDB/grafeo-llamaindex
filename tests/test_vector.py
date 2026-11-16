@@ -1,8 +1,16 @@
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
-from llama_index.core.graph_stores.types import EntityNode
-from llama_index.core.vector_stores.types import VectorStoreQuery
+from llama_index.core.graph_stores.types import ChunkNode, EntityNode
+from llama_index.core.vector_stores.types import (
+    FilterCondition,
+    FilterOperator,
+    MetadataFilter,
+    MetadataFilters,
+    VectorStoreQuery,
+)
 
 from grafeo_llamaindex import GrafeoPropertyGraphStore
 
@@ -137,3 +145,91 @@ class TestIndexDroppedOutsideTheStore:
         # Dedup cannot search the dropped index, so a near-duplicate is stored as a new node.
         store.upsert_nodes([EntityNode(name="a2", label="person", embedding=[1.0, 0.0, 0.0, 0.0])])
         assert store.node_count == 3
+
+
+class TestVectorQueryScope:
+    """What vector_query searches: entity nodes only, narrowed by ``filters`` and ``node_ids``."""
+
+    def test_vector_query_skips_chunks(self) -> None:
+        # LlamaIndex embeds chunks too; like its Neo4j store, vector_query returns entities only, so
+        # chunks do not take the seed slots of VectorContextRetriever.
+        store = GrafeoPropertyGraphStore(embedding_dimensions=DIMS)
+        store.upsert_nodes(
+            [
+                ChunkNode(text="chunk", id_="c1", embedding=[0.1, 0.8, 0.3, 0.5]),
+                EntityNode(name="e", label="entity", embedding=[0.9, 0.1, 0.2, 0.1]),
+            ]
+        )
+        nodes, _scores = store.vector_query(VectorStoreQuery(query_embedding=[0.1, 0.8, 0.3, 0.5], similarity_top_k=1))
+        assert [n.id for n in nodes] == ["e"]
+
+    def test_vector_query_filter_eq(self, vector_store: GrafeoPropertyGraphStore) -> None:
+        vector_store.upsert_nodes([EntityNode(name="graph-db", label="entity", properties={"topic": "db"})])
+        filters = MetadataFilters(filters=[MetadataFilter(key="topic", value="db")])
+        nodes, _scores = vector_store.vector_query(
+            VectorStoreQuery(query_embedding=[0.9, 0.1, 0.2, 0.1], similarity_top_k=3, filters=filters)
+        )
+        assert [n.id for n in nodes] == ["graph-db"]
+
+    @pytest.mark.parametrize(
+        ("operator", "value", "expected"),
+        [
+            (FilterOperator.GT, 1, {"b", "c"}),
+            (FilterOperator.GTE, 2, {"b", "c"}),
+            (FilterOperator.LT, 2, {"a"}),
+            (FilterOperator.LTE, 2, {"a", "b"}),
+            (FilterOperator.NE, 2, {"a", "c"}),
+            (FilterOperator.IN, [1, 3], {"a", "c"}),
+            (FilterOperator.NIN, [1, 3], {"b"}),
+        ],
+    )
+    def test_vector_query_filter_operators(self, operator: FilterOperator, value: Any, expected: set[str]) -> None:
+        store = _ranked_store()
+        filters = MetadataFilters(filters=[MetadataFilter(key="rank", value=value, operator=operator)])
+        nodes, _scores = store.vector_query(VectorStoreQuery(query_embedding=_E, similarity_top_k=3, filters=filters))
+        assert {n.id for n in nodes} == expected
+
+    def test_vector_query_filters_combine_with_and(self) -> None:
+        store = _ranked_store()
+        filters = MetadataFilters(
+            filters=[
+                MetadataFilter(key="rank", value=1, operator=FilterOperator.GT),
+                MetadataFilter(key="rank", value=3, operator=FilterOperator.LT),
+            ]
+        )
+        nodes, _scores = store.vector_query(VectorStoreQuery(query_embedding=_E, similarity_top_k=3, filters=filters))
+        assert [n.id for n in nodes] == ["b"]
+
+    def test_vector_query_filters_or_raises(self) -> None:
+        filters = MetadataFilters(
+            filters=[MetadataFilter(key="rank", value=1), MetadataFilter(key="rank", value=2)],
+            condition=FilterCondition.OR,
+        )
+        with pytest.raises(NotImplementedError, match="or"):
+            _ranked_store().vector_query(VectorStoreQuery(query_embedding=_E, similarity_top_k=3, filters=filters))
+
+    def test_vector_query_unsupported_operator_raises(self) -> None:
+        filters = MetadataFilters(filters=[MetadataFilter(key="tags", value="x", operator=FilterOperator.CONTAINS)])
+        with pytest.raises(NotImplementedError, match="contains"):
+            _ranked_store().vector_query(VectorStoreQuery(query_embedding=_E, similarity_top_k=3, filters=filters))
+
+    def test_vector_query_node_ids(self) -> None:
+        nodes, _scores = _ranked_store().vector_query(
+            VectorStoreQuery(query_embedding=_E, similarity_top_k=3, node_ids=["a", "c"])
+        )
+        assert {n.id for n in nodes} == {"a", "c"}
+
+
+_E = [0.5, 0.5, 0.5, 0.5]
+
+
+def _ranked_store() -> GrafeoPropertyGraphStore:
+    """Three entities a, b, c with the same embedding and ranks 1, 2, 3."""
+    store = GrafeoPropertyGraphStore(embedding_dimensions=DIMS)
+    store.upsert_nodes(
+        [
+            EntityNode(name=n, label="entity", properties={"rank": r}, embedding=_E)
+            for n, r in (("a", 1), ("b", 2), ("c", 3))
+        ]
+    )
+    return store

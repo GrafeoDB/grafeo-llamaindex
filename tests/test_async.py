@@ -34,6 +34,7 @@ def async_store() -> GrafeoPropertyGraphStore:
 def _mock_embed_model() -> MagicMock:
     mock = MagicMock()
     mock.get_agg_embedding_from_queries.return_value = [0.85, 0.15, 0.25, 0.1]
+    mock.get_text_embedding_batch.side_effect = lambda texts: [[0.5, 0.5, 0.5, 0.5] for _ in texts]  # labels
     return mock
 
 

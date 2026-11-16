@@ -33,9 +33,10 @@ def retriever_store() -> GrafeoPropertyGraphStore:
 
 
 def _mock_embed_model() -> MagicMock:
-    """Create a mock embed model that returns a fixed query embedding."""
+    """Create a mock embed model that returns a fixed query embedding, and one for each relation label."""
     mock = MagicMock()
     mock.get_agg_embedding_from_queries.return_value = [0.85, 0.15, 0.25, 0.1]
+    mock.get_text_embedding_batch.side_effect = lambda texts: [[0.5, 0.5, 0.5, 0.5] for _ in texts]
     return mock
 
 
@@ -356,3 +357,59 @@ class TestPageRankScores:
         assert store._pagerank() == {}
         retriever = GrafeoPGRetriever(graph_store=store, embed_model=_mock_embed_model())
         assert retriever._pagerank_scores({"anything"}) == {}
+
+
+class TestRelevanceRanking:
+    """The triplet that answers ranks above a hub's triplets, with PageRank on."""
+
+    @staticmethod
+    def _store() -> GrafeoPropertyGraphStore:
+        # Gilfoyle -[BUILT]-> Anton answers the query; Palo Alto is a hub many people live in.
+        store = GrafeoPropertyGraphStore(embedding_dimensions=DIMS)
+        store.upsert_nodes(
+            [
+                EntityNode(name="Gilfoyle", embedding=[0.9, 0.1, 0.0, 0.0]),
+                EntityNode(name="Anton", embedding=[0.95, 0.0, 0.05, 0.0]),
+                EntityNode(name="Palo Alto", embedding=[0.0, 0.0, 1.0, 0.0]),
+            ]
+            + [EntityNode(name=f"resident{i}", embedding=[0.0, 0.0, 0.0, 1.0]) for i in range(6)]
+        )
+        store.upsert_relations(
+            [
+                Relation(label="BUILT", source_id="Gilfoyle", target_id="Anton"),
+                Relation(label="LIVES_IN", source_id="Gilfoyle", target_id="Palo Alto"),
+            ]
+            + [Relation(label="LIVES_IN", source_id=f"resident{i}", target_id="Palo Alto") for i in range(6)]
+        )
+        return store
+
+    @staticmethod
+    def _embed_model() -> MagicMock:
+        label_vectors = {"built": [1.0, 0.0, 0.0, 0.0], "lives in": [0.0, 0.0, 0.0, 1.0]}
+        mock = MagicMock()
+        mock.get_agg_embedding_from_queries.return_value = [1.0, 0.0, 0.0, 0.0]  # "what did Gilfoyle build?"
+        mock.get_text_embedding_batch.side_effect = lambda texts: [label_vectors[t] for t in texts]
+        return mock
+
+    def test_answer_outranks_hub(self) -> None:
+        retriever = GrafeoPGRetriever(
+            graph_store=self._store(), embed_model=self._embed_model(), similarity_top_k=2, include_text=False
+        )
+        results = retriever.retrieve("What did Gilfoyle build?")
+        assert results[0].text == "Gilfoyle -> BUILT -> Anton"
+
+    def test_labels_are_embedded_once(self) -> None:
+        embed_model = self._embed_model()
+        retriever = GrafeoPGRetriever(
+            graph_store=self._store(), embed_model=embed_model, similarity_top_k=2, include_text=False
+        )
+        retriever.retrieve("q1")
+        retriever.retrieve("q2")
+        embedded = [text for call in embed_model.get_text_embedding_batch.call_args_list for text in call.args[0]]
+        assert sorted(embedded) == ["built", "lives in"]
+
+    def test_limit_applies_after_ranking(self) -> None:
+        retriever = GrafeoPGRetriever(
+            graph_store=self._store(), embed_model=self._embed_model(), similarity_top_k=2, limit=1, include_text=False
+        )
+        assert [r.text for r in retriever.retrieve("q")] == ["Gilfoyle -> BUILT -> Anton"]
