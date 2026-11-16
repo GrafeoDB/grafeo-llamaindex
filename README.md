@@ -475,17 +475,6 @@ graph_store.delete_llama_nodes(ref_doc_ids=[doc_id])
 
 A store can be shared between threads (LlamaIndex uses threads for `num_workers` and async retrieval). Writes (`upsert_nodes`, `upsert_relations`, `delete`) run one at a time, so concurrent upserts of the same node create it once.
 
-## Comparison
-
-| | Neo4j | FalkorDB | **Grafeo** |
-| --- | --- | --- | --- |
-| Requires server | Yes | Yes | **No** (embedded) |
-| Vector search | Vector index (5.11+) | Vector index | **HNSW index, in the same file** |
-| Graph algorithms | GDS plugin | Built-in | **Built-in (30+)** |
-| Query languages | Cypher | Cypher | **GQL, Cypher, Gremlin, GraphQL, SPARQL, SQL/PGQ** |
-| Deployment | Docker/Cloud | Docker/Cloud | **`uv add grafeo-llamaindex`** |
-| Persistence | Server-managed | Server-managed | **Single `.grafeo` file** |
-
 ## Examples
 
 See the [`examples/`](https://github.com/GrafeoDB/grafeo-llamaindex/tree/main/examples) directory:
