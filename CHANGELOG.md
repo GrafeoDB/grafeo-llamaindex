@@ -2,7 +2,7 @@
 
 All notable changes to grafeo-llamaindex, a LlamaIndex property graph store backed by Grafeo.
 
-## [0.3.0] - Unreleased
+## [0.3.0] - 2026-11-16
 
 grafeo 0.6 release: requires grafeo 0.6, which stores every database as a single file in a new format and migrates a database written by grafeo 0.5 on its first open, keeping the old one as `<path>.pre-0.6` (see "Upgrading from grafeo 0.5" in the README). `structured_query()` now runs Cypher by default, deleting a document also deletes what was extracted only from it, and the never-published 0.2.1 fixes below ship in this release. For grafeo 0.5, stay on 0.2.0 and pin `grafeo<0.6` as well, since 0.2.0 sets no upper bound on grafeo.
 
