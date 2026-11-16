@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import math
+from collections.abc import Sequence
 from typing import Any
 
 from llama_index.core.base.embeddings.base import BaseEmbedding
@@ -13,15 +15,30 @@ from llama_index.core.vector_stores.types import VectorStoreQuery
 
 from grafeo_llamaindex.property_graph_store import GrafeoPropertyGraphStore
 
+# Candidate triplets fetched per triplet returned: they are ranked first, then cut to ``limit``.
+_CANDIDATES_PER_RESULT = 4
+
+
+def _cosine(a: Sequence[float] | None, b: Sequence[float] | None) -> float:
+    """Cosine similarity of two vectors; 0.0 when either is missing or zero."""
+    if not a or not b or len(a) != len(b):
+        return 0.0
+    dot = sum(x * y for x, y in zip(a, b, strict=True))
+    norm = math.sqrt(sum(x * x for x in a)) * math.sqrt(sum(y * y for y in b))
+    return dot / norm if norm else 0.0
+
 
 class GrafeoPGRetriever(BasePGRetriever):
     """Property Graph retriever that leverages Grafeo's native vector search and graph algorithms.
 
-    Combines vector similarity search with multi-hop graph expansion and optional
-    PageRank-weighted reranking, all within a single embedded Grafeo engine.
+    Finds seed entities by vector search, expands them through the graph, and ranks each triplet
+    by how well it matches the query: the mean cosine similarity of the query to the source, the
+    relation label and the target (``relevance``), blended with PageRank from Grafeo as a smaller
+    weight: ``final_score = alpha * relevance + (1 - alpha) * pagerank``. Scoring the whole triplet,
+    relation included, keeps well-connected hubs from outranking the triplet that answers.
 
-    Compared to LlamaIndex's built-in ``VectorContextRetriever``, this retriever
-    adds PageRank blending: ``final_score = alpha * similarity + (1 - alpha) * pagerank``.
+    ``limit`` triplets are returned, ranked among ``4 * limit`` candidates from the expansion.
+    Relation labels are embedded once each (``"WORKS_AT"`` as ``"works at"``) and cached.
     """
 
     def __init__(
@@ -32,7 +49,7 @@ class GrafeoPGRetriever(BasePGRetriever):
         similarity_top_k: int = 10,
         path_depth: int = 1,
         limit: int = 30,
-        alpha: float = 0.7,
+        alpha: float = 0.9,
         use_pagerank: bool = True,
         include_text: bool = True,
         include_properties: bool = False,
@@ -45,6 +62,7 @@ class GrafeoPGRetriever(BasePGRetriever):
         self._alpha = alpha
         self._use_pagerank = use_pagerank
         self._grafeo_store = graph_store
+        self._label_embeddings: dict[str, list[float]] = {}
 
         super().__init__(
             graph_store=graph_store,
@@ -89,47 +107,56 @@ class GrafeoPGRetriever(BasePGRetriever):
         for node, score in zip(kg_nodes, sim_scores, strict=True):
             sim_map[node.id] = score
 
-        # 3. Expand via graph traversal
+        # 3. Expand via graph traversal: more candidates than returned, ranked below
         triplets = self._graph_store.get_rel_map(
             kg_nodes,
             depth=self._path_depth,
-            limit=self._limit,
+            limit=self._limit * _CANDIDATES_PER_RESULT,
         )
         if not triplets:
             return []
 
-        # 4. Score each triplet
+        # 4. Score each triplet: its relevance to the query, blended with PageRank
+        query_embedding = query_bundle.embedding
+        label_embeddings = self._embed_labels({t[1].label for t in triplets})
+
+        def node_similarity(node: Any) -> float:
+            # A node without an embedding counts with its seed score, if it is a seed.
+            if node.embedding:
+                return _cosine(query_embedding, node.embedding)
+            return sim_map.get(node.id, 0.0)
+
         pagerank_map: dict[str, float] = {}
         if self._use_pagerank:
             pagerank_map = self._pagerank_scores({t[0].id for t in triplets} | {t[2].id for t in triplets})
 
         scores: list[float] = []
-        for triplet in triplets:
-            src_sim = sim_map.get(triplet[0].id, 0.0)
-            tgt_sim = sim_map.get(triplet[2].id, 0.0)
-            similarity = max(src_sim, tgt_sim)
-
+        for src, rel, tgt in triplets:
+            relevance = (
+                node_similarity(src) + _cosine(query_embedding, label_embeddings[rel.label]) + node_similarity(tgt)
+            ) / 3
             if self._use_pagerank and pagerank_map:
-                src_pr = pagerank_map.get(triplet[0].id, 0.0)
-                tgt_pr = pagerank_map.get(triplet[2].id, 0.0)
-                pr = max(src_pr, tgt_pr)
-                final = self._alpha * similarity + (1.0 - self._alpha) * pr
+                pr = max(pagerank_map.get(src.id, 0.0), pagerank_map.get(tgt.id, 0.0))
+                scores.append(self._alpha * relevance + (1.0 - self._alpha) * pr)
             else:
-                final = similarity
+                scores.append(relevance)
 
-            scores.append(final)
-
-        # 5. Sort by score descending
-        ranked = sorted(
-            zip(triplets, scores, strict=True),
-            key=lambda x: x[1],
-            reverse=True,
-        )
+        # 5. Sort by score descending, then keep ``limit``
+        ranked = sorted(zip(triplets, scores, strict=True), key=lambda x: x[1], reverse=True)[: self._limit]
 
         return self._get_nodes_with_score(
             [t for t, _s in ranked],
             [s for _t, s in ranked],
         )
+
+    def _embed_labels(self, labels: set[str]) -> dict[str, list[float]]:
+        """Embeddings of relation labels (``"WORKS_AT"`` as ``"works at"``), each computed once."""
+        missing = sorted(labels - self._label_embeddings.keys())
+        if missing:
+            texts = [label.replace("_", " ").lower() for label in missing]
+            for label, embedding in zip(missing, self._embed_model.get_text_embedding_batch(texts), strict=True):
+                self._label_embeddings[label] = embedding
+        return self._label_embeddings
 
     async def aretrieve_from_graph(self, query_bundle: QueryBundle) -> list[NodeWithScore]:
         return await asyncio.to_thread(self.retrieve_from_graph, query_bundle)

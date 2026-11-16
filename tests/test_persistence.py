@@ -178,7 +178,7 @@ class TestFileBackedStore:
             assert store.get(ids=["Alice"])[0].properties["age"] == 31
             assert _triplets(store) == {("Alice", "MENTIONS", "chunk-1")}
             assert _nearest(store, 2) == "Acme"
-            assert _nearest(store, 3) == "chunk-1"
+            assert store.get(ids=["chunk-1"])[0].embedding == pytest.approx(_vec(3))
 
             # Writes after a reopen find the stored nodes and relations instead of duplicating them.
             store.upsert_nodes([EntityNode(name="Acme", label="company", properties={"industry": "ai"})])
@@ -190,7 +190,7 @@ class TestFileBackedStore:
             assert {n.id for n in store.get()} == {"Acme", "chunk-1"}
             assert store.get(ids=["Acme"])[0].properties["industry"] == "ai"
             assert store.edge_count == 0
-            assert _nearest(store, 3) == "chunk-1"
+            assert store.get(ids=["chunk-1"])[0].embedding == pytest.approx(_vec(3))
 
     @LAYOUTS
     def test_reopen_with_other_dimensions_warns(self, tmp_path: Path, filename: str) -> None:
@@ -283,6 +283,35 @@ class TestPersist:
         context.persist(persist_dir=str(tmp_path))
         store.close()
 
-        saved = tmp_path / "property_graph_store.json"  # LlamaIndex's file name; the contents are a Grafeo database
+        # LlamaIndex names the file property_graph_store.json; the database is saved as .grafeo instead
+        assert not (tmp_path / "property_graph_store.json").exists()
+        saved = tmp_path / "property_graph_store.grafeo"
         with GrafeoPropertyGraphStore(db_path=str(saved), embedding_dimensions=DIMS) as reopened:
             assert reopened.node_count == 5
+
+    def test_storage_context_reloads(self, tmp_path: Path) -> None:
+        """StorageContext.from_defaults(persist_dir=...) loads after persist(); it failed on the .json file."""
+        store = GrafeoPropertyGraphStore(embedding_dimensions=DIMS)
+        _populate(store)
+        StorageContext.from_defaults(property_graph_store=store).persist(persist_dir=str(tmp_path))
+        store.close()
+
+        StorageContext.from_defaults(persist_dir=str(tmp_path))  # no store passed: must not read the database
+        saved = tmp_path / "property_graph_store.grafeo"
+        with GrafeoPropertyGraphStore(db_path=str(saved), embedding_dimensions=DIMS) as reopened:
+            context = StorageContext.from_defaults(persist_dir=str(tmp_path), property_graph_store=reopened)
+            assert context.property_graph_store is reopened
+            assert reopened.node_count == 4
+
+    def test_persist_json_path_saves_grafeo(self, tmp_path: Path) -> None:
+        store = GrafeoPropertyGraphStore(embedding_dimensions=DIMS)
+        _populate(store)
+        store.persist(str(tmp_path / "graph.json"))
+        assert not (tmp_path / "graph.json").exists()
+        assert (tmp_path / "graph.grafeo").is_file()
+
+    def test_db_path_accepts_pathlib_path(self, tmp_path: Path) -> None:
+        with GrafeoPropertyGraphStore(db_path=tmp_path / "kg.grafeo", embedding_dimensions=DIMS) as store:
+            _populate(store)
+        with GrafeoPropertyGraphStore(db_path=tmp_path / "kg.grafeo", embedding_dimensions=DIMS) as store:
+            assert store.node_count == 4

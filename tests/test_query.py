@@ -196,9 +196,26 @@ class TestSanitization:
         assert _validate_key("name") == "name"
         assert _validate_key("_private") == "_private"
 
-    def test_validate_key_invalid(self) -> None:
+    def test_validate_key_any_text(self) -> None:
+        # LlamaIndex metadata keys may hold spaces or hyphens; they are quoted in queries.
+        assert _validate_key("file name") == "file name"
+        assert _validate_key("page-label") == "page-label"
+
+    @pytest.mark.parametrize("key", ["", "a`b"])
+    def test_validate_key_invalid(self, key: str) -> None:
         with pytest.raises(ValueError, match="Invalid property key"):
-            _validate_key("not valid")
+            _validate_key(key)
+
+    def test_filter_on_key_with_space(self, store: GrafeoPropertyGraphStore) -> None:
+        store.upsert_nodes(
+            [
+                EntityNode(name="A", label="doc", properties={"file name": "a.txt"}),
+                EntityNode(name="B", label="doc", properties={"file name": "b.txt"}),
+            ]
+        )
+        assert [n.id for n in store.get(properties={"file name": "a.txt"})] == ["A"]
+        store.delete(properties={"file name": "a.txt"})
+        assert [n.id for n in store.get()] == ["B"]
 
     def test_get_with_special_chars(self, store: GrafeoPropertyGraphStore) -> None:
         node = EntityNode(name="O'Brien", label="person", properties={})

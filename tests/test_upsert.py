@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import time
 import warnings
+from pathlib import Path
 
 import pytest
 from llama_index.core.graph_stores.types import ChunkNode, EntityNode, Relation
@@ -295,3 +296,122 @@ class TestUpdatePaths:
         [chunk] = store.get(ids=["c1"])
         assert isinstance(chunk, ChunkNode)
         assert chunk.text == "new"
+
+
+class TestChunkKind:
+    """A ChunkNode stays a chunk whatever its label: it is marked as one, not recognized by label."""
+
+    def test_custom_chunk_label_round_trips(self, store: GrafeoPropertyGraphStore) -> None:
+        store.upsert_nodes([ChunkNode(text="page one", id_="p1", label="page")])
+        [node] = store.get(ids=["p1"])
+        assert isinstance(node, ChunkNode)
+        assert (node.label, node.text) == ("page", "page one")
+
+    def test_vector_query_skips_chunks_sharing_a_label(self) -> None:
+        store = GrafeoPropertyGraphStore(embedding_dimensions=4)
+        store.upsert_nodes(
+            [
+                ChunkNode(text="t", id_="c1", label="doc", embedding=[1.0, 0.0, 0.0, 0.0]),
+                EntityNode(name="e", label="doc", embedding=[0.9, 0.1, 0.0, 0.0]),
+            ]
+        )
+        nodes, _scores = store.vector_query(VectorStoreQuery(query_embedding=[1.0, 0.0, 0.0, 0.0], similarity_top_k=2))
+        assert [n.id for n in nodes] == ["e"]
+
+    def test_dedup_never_merges_into_a_chunk(self) -> None:
+        store = GrafeoPropertyGraphStore(embedding_dimensions=4, dedup_threshold=0.9)
+        store.upsert_nodes([ChunkNode(text="t", id_="c1", label="doc", embedding=[1.0, 0.0, 0.0, 0.0])])
+        store.upsert_nodes([EntityNode(name="e", label="doc", embedding=[1.0, 0.0, 0.0, 0.0])])
+        assert {type(n).__name__ for n in store.get()} == {"ChunkNode", "EntityNode"}
+
+    def test_chunk_label_known_after_reopen(self, tmp_path: Path) -> None:
+        path = str(tmp_path / "kg.grafeo")
+        with GrafeoPropertyGraphStore(db_path=path, embedding_dimensions=4) as store:
+            store.upsert_nodes(
+                [
+                    ChunkNode(text="t", id_="c1", label="doc", embedding=[1.0, 0.0, 0.0, 0.0]),
+                    EntityNode(name="e", label="doc", embedding=[0.9, 0.1, 0.0, 0.0]),
+                ]
+            )
+        with GrafeoPropertyGraphStore(db_path=path, embedding_dimensions=4) as store:
+            query = VectorStoreQuery(query_embedding=[1.0, 0.0, 0.0, 0.0], similarity_top_k=2)
+            assert [n.id for n in store.vector_query(query)[0]] == ["e"]
+            assert isinstance(store.get(ids=["c1"])[0], ChunkNode)
+
+
+class TestRelabel:
+    """Upserting a node again with another label moves it to that label."""
+
+    def test_relabel_updates_grafeo_label(self, store: GrafeoPropertyGraphStore) -> None:
+        store.upsert_nodes([EntityNode(name="Scrooge", label="PERSON")])
+        store.upsert_nodes([EntityNode(name="Scrooge", label="CHARACTER")])
+        assert store.get(ids=["Scrooge"])[0].label == "CHARACTER"
+        assert [entry["name"] for entry in store.get_schema(refresh=True)["labels"]] == ["CHARACTER"]
+        assert store.structured_query("MATCH (n:CHARACTER) RETURN n.name AS name") == [{"name": "Scrooge"}]
+
+    def test_relabel_keeps_vector_search(self) -> None:
+        store = GrafeoPropertyGraphStore(embedding_dimensions=4)
+        store.upsert_nodes([EntityNode(name="Scrooge", label="PERSON", embedding=[0.1, 0.8, 0.3, 0.5])])
+        store.upsert_nodes([EntityNode(name="Scrooge", label="CHARACTER")])  # no embedding this time
+        query = VectorStoreQuery(query_embedding=[0.1, 0.8, 0.3, 0.5], similarity_top_k=1)
+        nodes, _scores = store.vector_query(query)
+        assert [(n.id, n.label) for n in nodes] == [("Scrooge", "CHARACTER")]
+
+
+class TestCaseInsensitiveNames:
+    """LlamaIndex's default extractor capitalises names ("Gavin belson"); they match entities written
+    with their real case ("Gavin Belson") instead of becoming duplicates."""
+
+    @staticmethod
+    def _store(case_insensitive_names: bool = True) -> GrafeoPropertyGraphStore:
+        store = GrafeoPropertyGraphStore(case_insensitive_names=case_insensitive_names)
+        store.upsert_nodes(
+            [
+                EntityNode(name="Gavin Belson", label="Person", properties={"pledge": "Tethics"}),
+                EntityNode(name="Hooli", label="Company"),
+            ]
+        )
+        return store
+
+    def test_extracted_name_merges_into_existing_entity(self) -> None:
+        store = self._store()
+        store.upsert_nodes([EntityNode(name="Gavin belson", label="entity", properties={"triplet_source_id": "c1"})])
+        [gavin] = [n for n in store.get() if n.id.lower() == "gavin belson"]
+        assert (gavin.id, gavin.label, gavin.properties["pledge"]) == ("Gavin Belson", "Person", "Tethics")
+        assert [n.id for n in store.get(ids=["Gavin belson"])] == ["Gavin Belson"]
+
+    def test_relation_endpoints_match_any_case(self) -> None:
+        store = self._store()
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            store.upsert_relations([Relation(label="WAS_CEO_OF", source_id="Gavin belson", target_id="hooli")])
+        assert [(t[0].id, t[1].label, t[2].id) for t in store.get_triplets()] == [
+            ("Gavin Belson", "WAS_CEO_OF", "Hooli")
+        ]
+        assert len(store.get_triplets(entity_names=["GAVIN BELSON"])) == 1
+
+    def test_delete_by_name_matches_any_case(self) -> None:
+        store = self._store()
+        store.delete(entity_names=["hooli"])
+        assert [n.id for n in store.get()] == ["Gavin Belson"]
+
+    def test_option_off_keeps_case(self) -> None:
+        store = self._store(case_insensitive_names=False)
+        store.upsert_nodes([EntityNode(name="Gavin belson", label="entity")])
+        assert sorted(n.id for n in store.get()) == ["Gavin Belson", "Gavin belson", "Hooli"]
+
+    def test_chunks_are_not_matched(self) -> None:
+        store = self._store()
+        store.upsert_nodes([ChunkNode(text="t", id_="hooli")])
+        assert sorted(type(n).__name__ for n in store.get()) == ["ChunkNode", "EntityNode", "EntityNode"]
+
+    def test_match_survives_reopen(self, tmp_path: Path) -> None:
+        path = str(tmp_path / "kg.grafeo")
+        with GrafeoPropertyGraphStore(db_path=path) as store:
+            store.upsert_nodes([EntityNode(name="Gavin Belson", label="Person")])
+        with GrafeoPropertyGraphStore(db_path=path) as store:
+            store.upsert_nodes([EntityNode(name="Gavin belson", label="entity")])
+            assert [n.id for n in store.get()] == ["Gavin Belson"]
+
+    def test_schema_hides_the_folded_name(self) -> None:
+        assert "li_name_key" not in self._store().get_schema_str(refresh=True)

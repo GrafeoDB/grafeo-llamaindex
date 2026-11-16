@@ -106,7 +106,8 @@ class TestMigration:
             for i, li_id in enumerate(["Alice", "Bob", "Acme", "chunk-1"]):
                 [node] = store.get(ids=[li_id])
                 assert node.embedding == pytest.approx(_vec(i))
-                assert _nearest(store, i) == li_id
+                if li_id != "chunk-1":  # vector_query searches entities only
+                    assert _nearest(store, i) == li_id
 
     def test_rel_map(self, tmp_path: Path, fixture: str) -> None:
         with GrafeoPropertyGraphStore(db_path=str(_copy(fixture, tmp_path)), embedding_dimensions=DIMS) as store:

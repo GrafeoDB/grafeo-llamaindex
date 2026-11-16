@@ -5,7 +5,7 @@ from pathlib import Path
 
 import grafeo
 import pytest
-from llama_index.core.graph_stores.types import EntityNode, Relation
+from llama_index.core.graph_stores.types import ChunkNode, EntityNode, Relation
 from llama_index.core.vector_stores.types import VectorStoreQuery
 
 from grafeo_llamaindex import GrafeoPropertyGraphStore
@@ -44,9 +44,36 @@ class TestSchema:
         assert "company" in label_names
 
     def test_schema_str(self, populated_store: GrafeoPropertyGraphStore) -> None:
-        schema_str = populated_store.get_schema_str()
-        assert "Node labels:" in schema_str
-        assert "Edge types:" in schema_str
+        """Properties per label and relation type, and the patterns between labels, as LlamaIndex's Neo4j
+        store describes them; the store's bookkeeping keys (li_*, embedding) are left out."""
+        assert populated_store.get_schema_str() == "\n".join(
+            [
+                "Node properties:",
+                "- company: created_at, industry, name, updated_at",
+                "- person: age, created_at, name, updated_at",
+                "Relationship properties:",
+                "- KNOWS: created_at, since, updated_at",
+                "- WORKS_AT: created_at, updated_at",
+                "The relationships:",
+                "(:person)-[:KNOWS]->(:person)",
+                "(:person)-[:WORKS_AT]->(:company)",
+            ]
+        )
+
+    def test_schema_str_hides_bookkeeping(self) -> None:
+        store = GrafeoPropertyGraphStore(embedding_dimensions=4, dedup_threshold=0.9)
+        store.upsert_nodes(
+            [
+                EntityNode(name="A", label="p", properties={"triplet_source_id": "c1"}, embedding=[1.0, 0, 0, 0]),
+                ChunkNode(text="t", id_="c1", properties={"_node_content": "{}", "ref_doc_id": "d1"}),
+            ]
+        )
+        store.upsert_nodes([EntityNode(name="A2", label="p", embedding=[1.0, 0, 0, 0])])  # merged: li_aliases
+        schema_str = store.get_schema_str()
+        for hidden in ("li_id", "li_label", "li_kind", "li_aliases", "li_sources", "embedding", "_node_content"):
+            assert hidden not in schema_str
+        assert "triplet_source_id" not in schema_str
+        assert "- text_chunk: created_at, ref_doc_id, text, updated_at" in schema_str
 
     def test_schema_cache(self, populated_store: GrafeoPropertyGraphStore) -> None:
         schema1 = populated_store.get_schema()

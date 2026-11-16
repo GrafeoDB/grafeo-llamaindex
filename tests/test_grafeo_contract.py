@@ -289,6 +289,36 @@ class TestQueries:
         assert list(db.execute_gremlin("g.V().count()", None)) == [{"count": 2}]
 
 
+class TestLists:
+    """List properties: dedup aliases (``li_aliases``) and extraction sources (``li_sources``)."""
+
+    def test_empty_list_is_stored(self, db: grafeo.GrafeoDB) -> None:
+        node = db.create_node(labels=["e"], properties={"li_sources": []})
+        assert db.get_node(node.id).properties() == {"li_sources": []}, _broke(
+            "delete() cascade", "an empty list property to be stored (it marks an entity whose sources are deleted)"
+        )
+
+    def test_value_in_list_property(self, db: grafeo.GrafeoDB) -> None:
+        node = db.create_node(labels=["e"], properties={"li_aliases": ["S", "T"]})
+        db.create_node(labels=["e"], properties={})
+        query = "MATCH (n) WHERE $v IN n.li_aliases RETURN id(n) AS gid"
+        assert _rows(db, query, {"v": "T"}) == [{"gid": node.id}], _broke("_load_aliases", "$v IN n.list to match")
+
+    @pytest.mark.parametrize("language", ["gql", "cypher"])
+    def test_any_in_list_predicate(self, graph: tuple[grafeo.GrafeoDB, int, int, int], language: str) -> None:
+        db, a, _b, edge = graph
+        db.set_node_property(a, "li_sources", ["c1", "c2"])
+        db.set_edge_property(edge, "li_sources", ["c2"])
+        run = db.execute if language == "gql" else db.execute_cypher
+        nodes = list(run("MATCH (n) WHERE any(s IN n.li_sources WHERE s IN $c) RETURN id(n) AS i", {"c": ["c1"]}))
+        edges = list(
+            run("MATCH ()-[r]->() WHERE any(s IN r.li_sources WHERE s IN $c) RETURN id(r) AS i", {"c": ["c2"]})
+        )
+        assert (nodes, edges) == ([{"i": a}], [{"i": edge}]), _broke(
+            "delete() cascade", "any(s IN x.list WHERE s IN $list) on nodes and edges, false for a missing list"
+        )
+
+
 class TestDelete:
     def test_detach_delete_by_ids(self, graph: tuple[grafeo.GrafeoDB, int, int, int]) -> None:
         db, a, b, _e = graph
@@ -330,10 +360,61 @@ class TestSchema:
             "get_schema_str, _rediscover_vector_indexes", "schema()['property_keys'] as a list of names"
         )
 
+    def test_schema_properties_and_endpoints(self, graph: tuple[grafeo.GrafeoDB, int, int, int]) -> None:
+        db, *_ = graph
+        schema = db.schema()
+        [person] = schema["labels"]
+        assert {p["name"] for p in person["properties"]} == {"li_id", "name", "age"}, _broke(
+            "get_schema_str", "schema()['labels'][i]['properties'] as [{'name', 'types'}]"
+        )
+        [knows] = schema["edge_types"]
+        assert {p["name"] for p in knows["properties"]} == {"since"}, _broke(
+            "get_schema_str", "schema()['edge_types'][i]['properties'] as [{'name', 'types'}]"
+        )
+        assert [(e["source"], e["target"]) for e in knows["endpoints"]] == [("person", "person")], _broke(
+            "get_schema_str (relationship patterns)", "schema()['edge_types'][i]['endpoints'] as [{'source', 'target'}]"
+        )
+
 
 class TestVectorIndex:
     def _search(self, db: grafeo.GrafeoDB, query: list[float], k: int = 3) -> list[tuple[int, float]]:
         return db.vector_search(label="e", property="embedding", query=query, k=k)
+
+    def test_search_filters(self, db: grafeo.GrafeoDB) -> None:
+        db.create_vector_index(label="e", property="embedding", dimensions=DIMS, metric="cosine")
+        ids = [
+            db.create_node(labels=["e"], properties={"embedding": [1.0, 0.0, 0.0, 0.0], "rank": r, "li_kind": kind}).id
+            for r, kind in ((1, "entity"), (2, "chunk"), (3, "entity"))
+        ]
+        legacy = db.create_node(labels=["e"], properties={"embedding": [1.0, 0.0, 0.0, 0.0], "rank": 4}).id
+
+        def found(filters: dict) -> set[int]:
+            hits = db.vector_search(label="e", property="embedding", query=[1.0, 0.0, 0.0, 0.0], k=10, filters=filters)
+            return {node_id for node_id, _ in hits}
+
+        assert found({"rank": 2}) == {ids[1]}, _broke("vector_query(filters=...)", "an equality filter")
+        assert found({"rank": {"$gt": 1, "$lt": 4}}) == {ids[1], ids[2]}, _broke(
+            "vector_query(filters=...)", "operator filters ($gt, $lt, ...) combined with AND"
+        )
+        assert found({"rank": {"$in": [1, 4]}}) == {ids[0], legacy}, _broke("vector_query(filters=...)", "$in")
+        assert found({"li_kind": "entity"}) == {ids[0], ids[2]}, _broke(
+            "vector_query on a label that holds chunks", "a filter to leave out nodes without the property"
+        )
+
+    def test_index_follows_relabel(self, db: grafeo.GrafeoDB) -> None:
+        db.create_vector_index(label="a", property="embedding", dimensions=DIMS, metric="cosine")
+        db.create_vector_index(label="b", property="embedding", dimensions=DIMS, metric="cosine")
+        node = db.create_node(labels=["a"], properties={"embedding": [1.0, 0.0, 0.0, 0.0]})
+        db.remove_node_label(node.id, "a")
+        db.add_node_label(node.id, "b")
+        assert db.get_node_labels(node.id) == ["b"], _broke("upsert_nodes (label change)", "remove/add_node_label")
+        search = [1.0, 0.0, 0.0, 0.0]
+        assert db.vector_search(label="a", property="embedding", query=search, k=1) == [], _broke(
+            "upsert_nodes (label change)", "a relabelled node to leave the old label's vector index"
+        )
+        assert [n for n, _ in db.vector_search(label="b", property="embedding", query=search, k=1)] == [node.id], (
+            _broke("upsert_nodes (label change)", "a relabelled node to join the new label's vector index")
+        )
 
     def test_empty_index_then_auto_indexing(self, db: grafeo.GrafeoDB) -> None:
         db.create_vector_index(label="e", property="embedding", dimensions=DIMS, metric="cosine")
