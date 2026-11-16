@@ -13,6 +13,7 @@ from llama_index.core.embeddings import MockEmbedding
 from llama_index.core.graph_stores.types import KG_NODES_KEY, KG_RELATIONS_KEY, EntityNode, Relation
 from llama_index.core.indices.property_graph import ImplicitPathExtractor
 from llama_index.core.llms import MockLLM
+from llama_index.core.node_parser import TokenTextSplitter
 from llama_index.core.schema import BaseNode, TransformComponent
 from llama_index.core.vector_stores.types import MetadataFilter, MetadataFilters
 
@@ -77,6 +78,9 @@ class TestPropertyGraphIndex:
             PropertyGraphIndex.from_documents(
                 [Document(text=text, doc_id="doc-1")],
                 property_graph_store=store,
+                # A token splitter makes the chunks: the default sentence splitter reads NLTK data,
+                # which NLTK 3.10 refuses to open when uv installed it as hard links (Linux CI).
+                transformations=[TokenTextSplitter(chunk_size=256, chunk_overlap=0)],
                 kg_extractors=[ImplicitPathExtractor()],
                 embed_model=MockEmbedding(embed_dim=DIMS),
                 llm=MockLLM(),
